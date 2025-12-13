@@ -8,11 +8,6 @@ A single-project construction management and billing web application built with 
 
 ## 🎯 Project Overview
 
-**Project:** Abhimanyu Tiling Works Main Project  
-**Area:** 198,174 sq ft  
-**Rate:** ₹90 per sq ft  
-**Contract Value:** ₹17,83,56,600 (with 9% CGST + 9% SGST)
-
 ### Structure:
 - **Wing A:** 16 floors × 4 flats each (3×2BHK + 1×1BHK) = 64 flats
 - **Wing B:** 16 floors × 7 flats each (3×2BHK + 4×1BHK) = 112 flats
@@ -327,7 +322,7 @@ SiteLedger/
 ### Pages:
 - [ ] Dashboard loads project stats
 - [ ] Wing summary shows correct flat counts
-- [ ] Contract value calculates correctly (₹17,83,56,600)
+- [ ] Contract value calculates correctly 
 - [ ] Daily Progress form cascades Wing → Floor → Flat
 - [ ] Work items dropdown shows A–I
 - [ ] Settings page shows work items with lock status
@@ -494,16 +489,7 @@ npm run preview
 - No kitchen work (items C & E automatically excluded)
 - Joint refuge flats share bathrooms (0.5 quantity for work item D)
 
-**Work Item Rates:**
-- A: ₹0 (Marble Window Patti)
-- B: ₹0 (WC & Bath Frame)  
-- C: ₹5,285 (Kitchen Platform)
-- D: ₹6,161 (Bathroom Tiles)
-- E: ₹5,945 (Platform Tiles)
-- F: ₹14,217 (Room & Balcony Flooring)
-- G: ₹5,170 (Skirting)
-- H: ₹0 (Tapa Riser)
-- I: ₹0 (Shop Flooring)
+
 
 ---
 
