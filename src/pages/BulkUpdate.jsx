@@ -141,6 +141,12 @@ export default function BulkUpdate() {
         .eq('is_active', true)
 
       if (configError) throw configError
+      
+      // If no detail configs, skip this work item (A, H, I don't have detail checks)
+      if (!configs || configs.length === 0) {
+        setDetailProgress({})
+        return
+      }
 
       // Load detail progress for all flats
       const { data: progress, error: progressError } = await supabase
@@ -162,8 +168,11 @@ export default function BulkUpdate() {
         })
 
         // Special handling for Work Item D (Bathrooms) and refugee flats
-        if (workItem.code === 'D' && flat.is_refuge && !flat.is_joint_refuge) {
-          applicableConfigs = applicableConfigs.filter(c => c.detail_name === 'Common Bathroom')
+        if (workItem.code === 'D') {
+          // Refugee flats (non-joint) only have Common Bathroom
+          if (flat.is_refuge === true && flat.is_joint_refuge !== true) {
+            applicableConfigs = applicableConfigs.filter(c => c.detail_name === 'Common Bathroom')
+          }
         }
 
         const totalChecks = applicableConfigs.length
@@ -586,16 +595,28 @@ export default function BulkUpdate() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                   {floorFlats.map(flat => {
                     const isSelected = selections[flat.id]?.[selectedWorkItem]
-                    const isCompleted = isAlreadyCompleted(flat.id)
                     const workItem = workItems.find(w => w.id === selectedWorkItem)
                     const isNotApplicable = flat.is_refuge && workItem && ['C', 'E'].includes(workItem.code)
                     const flatDetail = detailProgress[flat.id] || { percentage: 0, completed: 0, total: 0 }
+                    
+                    // For work items with detail configs (B-G), use detail progress
+                    // For simple work items (A, H, I), use old completion check
+                    const hasDetailConfigs = workItem && ['B', 'C', 'D', 'E', 'F', 'G'].includes(workItem.code)
+                    const isFullyCompleted = hasDetailConfigs 
+                      ? flatDetail.percentage === 100 
+                      : isAlreadyCompleted(flat.id)
+                    const isPartiallyCompleted = hasDetailConfigs && flatDetail.percentage > 0 && flatDetail.percentage < 100
 
                     return (
                       <button
                         key={flat.id}
                         onClick={() => {
                           if (isNotApplicable) return
+                          if (!hasDetailConfigs) {
+                            // For A, H, I - just toggle selection (old bulk update behavior)
+                            toggleSelection(flat.id, selectedWorkItem)
+                            return
+                          }
                           setSelectedFlat(flat)
                           setShowEnhancedModal(true)
                         }}
@@ -606,8 +627,10 @@ export default function BulkUpdate() {
                             ? 'border-neutral-200 dark:border-dark-border bg-neutral-100 dark:bg-neutral-800 opacity-50 cursor-not-allowed'
                             : isSelected 
                             ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 shadow-md' 
-                            : isCompleted
+                            : isFullyCompleted
                             ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/10'
+                            : isPartiallyCompleted
+                            ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10'
                             : 'border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-hover hover:border-primary-300'
                           }
                         `}
@@ -633,8 +656,10 @@ export default function BulkUpdate() {
                           }`} />
                           {isSelected ? (
                             <CheckSquare size={20} className="text-primary-600 dark:text-primary-400" />
-                          ) : isCompleted ? (
+                          ) : isFullyCompleted ? (
                             <CheckCircle size={20} className="text-green-600 dark:text-green-400" />
+                          ) : isPartiallyCompleted ? (
+                            <CheckCircle size={20} className="text-amber-500 dark:text-amber-400" />
                           ) : (
                             <Square size={20} className="text-neutral-300 dark:text-neutral-600" />
                           )}
@@ -681,7 +706,7 @@ export default function BulkUpdate() {
                                 />
                               </div>
                             </div>
-                          ) : isCompleted && !isSelected ? (
+                          ) : isFullyCompleted && !isSelected ? (
                             <p className="text-xs text-green-600 dark:text-green-400 mt-1 font-medium">
                               ✓ Completed
                             </p>
@@ -719,6 +744,7 @@ export default function BulkUpdate() {
             setShowEnhancedModal(false)
             setSelectedFlat(null)
             loadExistingProgress()
+            loadDetailProgress() // Refresh floor and flat completion percentages
           }}
           onClose={() => {
             setShowEnhancedModal(false)

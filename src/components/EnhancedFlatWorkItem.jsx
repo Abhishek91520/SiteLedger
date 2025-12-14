@@ -46,9 +46,21 @@ export default function EnhancedFlatWorkItem({
       // Special handling for Work Item D (Bathrooms)
       let finalConfigs = filtered
       if (workItem.code === 'D') {
+        console.log('Work Item D - Flat info:', {
+          flat_number: flat.flat_number,
+          is_refuge: flat.is_refuge,
+          is_joint_refuge: flat.is_joint_refuge,
+          filtered_count: filtered.length,
+          all_configs: filtered.map(c => c.detail_name)
+        })
+        
         // Refugee flats (non-joint) only have common bathroom
-        if (flat.is_refuge && !flat.is_joint_refuge) {
+        // Explicit boolean checks to handle false/null/undefined
+        if (flat.is_refuge === true && flat.is_joint_refuge !== true) {
           finalConfigs = filtered.filter(c => c.detail_name === 'Common Bathroom')
+          console.log('Refugee flat (non-joint) detected - showing only Common Bathroom. Final configs:', finalConfigs.map(c => c.detail_name))
+        } else {
+          console.log('Normal flat or joint refuge - showing all bathrooms')
         }
       }
 
@@ -198,13 +210,24 @@ export default function EnhancedFlatWorkItem({
     try {
       const user = await supabase.auth.getUser()
 
-      // Save all progress items
+      console.log('Saving progress for', detailConfigs.length, 'checks:', progress)
+
+      // Save all progress items - handle each check independently
       for (const config of detailConfigs) {
         const progressItem = progress[config.id]
         const isCompleted = progressItem?.is_completed || false
 
-        if (progressItem && progressItem.id) {
-          // Update existing
+        // Check if entry exists in database
+        const { data: existingEntry } = await supabase
+          .from('work_item_details_progress')
+          .select('id')
+          .eq('flat_id', flat.id)
+          .eq('work_item_id', workItem.id)
+          .eq('detail_config_id', config.id)
+          .maybeSingle()
+
+        if (existingEntry) {
+          // Update existing entry
           await supabase
             .from('work_item_details_progress')
             .update({
@@ -213,9 +236,9 @@ export default function EnhancedFlatWorkItem({
               completed_by: isCompleted ? user.data.user?.id : null,
               updated_at: new Date().toISOString()
             })
-            .eq('id', progressItem.id)
+            .eq('id', existingEntry.id)
         } else if (isCompleted) {
-          // Insert new
+          // Insert new entry only if checked
           await supabase
             .from('work_item_details_progress')
             .insert({
