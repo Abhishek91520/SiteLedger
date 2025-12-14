@@ -9,7 +9,7 @@ export default defineConfig({
     open: true
   },
   build: {
-    chunkSizeWarningLimit: 1000, // Increase from default 500kb to 1000kb
+    chunkSizeWarningLimit: 5000, // Increase to 2000kb for large 3D libraries
     rollupOptions: {
       output: {
         manualChunks: {
