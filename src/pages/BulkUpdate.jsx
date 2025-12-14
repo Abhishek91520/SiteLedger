@@ -3,6 +3,7 @@ import { useTheme } from '../context/ThemeContext'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { CheckSquare, Square, Filter, Save, AlertCircle, CheckCircle, Building2, Home } from 'lucide-react'
+import EnhancedFlatWorkItem from '../components/EnhancedFlatWorkItem'
 
 export default function BulkUpdate() {
   const { theme } = useTheme()
@@ -16,6 +17,7 @@ export default function BulkUpdate() {
   const [workItems, setWorkItems] = useState([])
   const [flats, setFlats] = useState([])
   const [existingProgress, setExistingProgress] = useState({})
+  const [detailProgress, setDetailProgress] = useState({}) // For detailed checks completion
 
   // Filter states
   const [selectedWing, setSelectedWing] = useState('')
@@ -24,6 +26,10 @@ export default function BulkUpdate() {
 
   // Selection state - { flatId: { workItemId: true/false } }
   const [selections, setSelections] = useState({})
+
+  // Enhanced detail modal
+  const [showEnhancedModal, setShowEnhancedModal] = useState(false)
+  const [selectedFlat, setSelectedFlat] = useState(null)
 
   // Completion date
   const [completionDate, setCompletionDate] = useState(new Date().toISOString().split('T')[0])
@@ -112,8 +118,77 @@ export default function BulkUpdate() {
       })
 
       setExistingProgress(progressMap)
+
+      // Load detailed progress for sub-checks
+      await loadDetailProgress()
     } catch (error) {
       console.error('Error loading progress:', error)
+    }
+  }
+
+  const loadDetailProgress = async () => {
+    if (!selectedWorkItem || flats.length === 0) return
+
+    try {
+      const workItem = workItems.find(w => w.id === selectedWorkItem)
+      if (!workItem) return
+
+      // Load detail configs for this work item
+      const { data: configs, error: configError } = await supabase
+        .from('work_item_detail_config')
+        .select('*')
+        .eq('work_item_code', workItem.code)
+        .eq('is_active', true)
+
+      if (configError) throw configError
+
+      // Load detail progress for all flats
+      const { data: progress, error: progressError } = await supabase
+        .from('work_item_details_progress')
+        .select('*')
+        .eq('work_item_id', selectedWorkItem)
+        .in('flat_id', flats.map(f => f.id))
+
+      if (progressError) throw progressError
+
+      // Calculate completion percentage for each flat
+      const detailProgressMap = {}
+      
+      flats.forEach(flat => {
+        // Filter configs based on flat's BHK type and refugee status
+        let applicableConfigs = configs.filter(config => {
+          if (!config.requires_bhk_type) return true
+          return config.requires_bhk_type === flat.bhk_type
+        })
+
+        // Special handling for Work Item D (Bathrooms) and refugee flats
+        if (workItem.code === 'D' && flat.is_refuge && !flat.is_joint_refuge) {
+          applicableConfigs = applicableConfigs.filter(c => c.detail_name === 'Common Bathroom')
+        }
+
+        const totalChecks = applicableConfigs.length
+        if (totalChecks === 0) {
+          detailProgressMap[flat.id] = { percentage: 0, completed: 0, total: 0 }
+          return
+        }
+
+        const completedChecks = progress.filter(p => 
+          p.flat_id === flat.id && 
+          p.is_completed &&
+          applicableConfigs.some(c => c.id === p.detail_config_id)
+        ).length
+
+        const percentage = Math.round((completedChecks / totalChecks) * 100)
+        detailProgressMap[flat.id] = { 
+          percentage, 
+          completed: completedChecks, 
+          total: totalChecks 
+        }
+      })
+
+      setDetailProgress(detailProgressMap)
+    } catch (error) {
+      console.error('Error loading detail progress:', error)
     }
   }
 
@@ -447,17 +522,66 @@ export default function BulkUpdate() {
         {/* Flats Grid */}
         {selectedWing && selectedWorkItem ? (
           <div className="space-y-6">
-            {Object.entries(groupedFlats).sort(([a], [b]) => parseInt(a) - parseInt(b)).map(([floor, floorFlats]) => (
-              <div key={floor} className="bg-white dark:bg-dark-card rounded-2xl shadow-lg border border-neutral-200 dark:border-dark-border p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <Building2 size={20} className="text-primary-600 dark:text-primary-400" />
-                  <h3 className="text-lg font-bold text-neutral-800 dark:text-dark-text">
-                    Floor {floor}
-                  </h3>
-                  <span className="text-sm text-neutral-600 dark:text-dark-muted">
-                    ({floorFlats.length} flats)
-                  </span>
-                </div>
+            {Object.entries(groupedFlats).sort(([a], [b]) => parseInt(a) - parseInt(b)).map(([floor, floorFlats]) => {
+              // Calculate floor completion percentage
+              const completedCount = floorFlats.filter(flat => {
+                const workItem = workItems.find(w => w.id === selectedWorkItem)
+                const isNotApplicable = flat.is_refuge && workItem && ['C', 'E'].includes(workItem.code)
+                if (isNotApplicable) return false
+                return isAlreadyCompleted(flat.id)
+              }).length
+              
+              const applicableFlats = floorFlats.filter(flat => {
+                const workItem = workItems.find(w => w.id === selectedWorkItem)
+                const isNotApplicable = flat.is_refuge && workItem && ['C', 'E'].includes(workItem.code)
+                return !isNotApplicable
+              }).length
+              
+              const floorCompletionPercentage = applicableFlats > 0 ? Math.round((completedCount / applicableFlats) * 100) : 0
+              
+              return (
+                <div key={floor} className="bg-white dark:bg-dark-card rounded-2xl shadow-lg border border-neutral-200 dark:border-dark-border p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Building2 size={20} className="text-primary-600 dark:text-primary-400" />
+                      <h3 className="text-lg font-bold text-neutral-800 dark:text-dark-text">
+                        Floor {floor}
+                      </h3>
+                      <span className="text-sm text-neutral-600 dark:text-dark-muted">
+                        ({floorFlats.length} flats)
+                      </span>
+                    </div>
+                    
+                    {/* Floor Completion Badge */}
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <div className="text-sm text-neutral-600 dark:text-dark-muted">
+                          {completedCount} / {applicableFlats} complete
+                        </div>
+                        <div className="w-32 bg-neutral-200 dark:bg-dark-border rounded-full h-2 mt-1">
+                          <div
+                            className={`h-2 rounded-full transition-all ${
+                              floorCompletionPercentage === 100
+                                ? 'bg-green-600'
+                                : floorCompletionPercentage > 0
+                                ? 'bg-amber-500'
+                                : 'bg-red-500'
+                            }`}
+                            style={{ width: `${floorCompletionPercentage}%` }}
+                          />
+                        </div>
+                      </div>
+                      <span className={`text-2xl font-bold ${
+                        floorCompletionPercentage === 100
+                          ? 'text-green-600'
+                          : floorCompletionPercentage > 0
+                          ? 'text-amber-600'
+                          : 'text-red-600'
+                      }`}>
+                        {floorCompletionPercentage}%
+                      </span>
+                    </div>
+                  </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                   {floorFlats.map(flat => {
@@ -465,11 +589,16 @@ export default function BulkUpdate() {
                     const isCompleted = isAlreadyCompleted(flat.id)
                     const workItem = workItems.find(w => w.id === selectedWorkItem)
                     const isNotApplicable = flat.is_refuge && workItem && ['C', 'E'].includes(workItem.code)
+                    const flatDetail = detailProgress[flat.id] || { percentage: 0, completed: 0, total: 0 }
 
                     return (
                       <button
                         key={flat.id}
-                        onClick={() => !isNotApplicable && toggleSelection(flat.id, selectedWorkItem)}
+                        onClick={() => {
+                          if (isNotApplicable) return
+                          setSelectedFlat(flat)
+                          setShowEnhancedModal(true)
+                        }}
                         disabled={isNotApplicable}
                         className={`
                           relative p-4 rounded-xl border-2 transition-all
@@ -483,6 +612,21 @@ export default function BulkUpdate() {
                           }
                         `}
                       >
+                        {/* Completion Badge at Top Right */}
+                        {!isNotApplicable && flatDetail.total > 0 && (
+                          <div className="absolute -top-2 -right-2 z-10">
+                            <div className={`px-2 py-1 rounded-full text-xs font-bold shadow-md ${
+                              flatDetail.percentage === 100
+                                ? 'bg-green-600 text-white'
+                                : flatDetail.percentage > 0
+                                ? 'bg-amber-500 text-white'
+                                : 'bg-red-500 text-white'
+                            }`}>
+                              {flatDetail.percentage}%
+                            </div>
+                          </div>
+                        )}
+
                         <div className="flex items-start justify-between mb-2">
                           <Home size={16} className={`${
                             isSelected ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-400 dark:text-neutral-600'
@@ -519,18 +663,37 @@ export default function BulkUpdate() {
                             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-medium">
                               N/A (No Kitchen)
                             </p>
-                          ) : isCompleted && !isSelected && (
+                          ) : flatDetail.total > 0 ? (
+                            <div className="mt-2">
+                              <p className="text-xs text-neutral-600 dark:text-dark-muted mb-1">
+                                {flatDetail.completed}/{flatDetail.total} checks
+                              </p>
+                              <div className="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-1.5">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${
+                                    flatDetail.percentage === 100
+                                      ? 'bg-green-600'
+                                      : flatDetail.percentage > 0
+                                      ? 'bg-amber-500'
+                                      : 'bg-red-500'
+                                  }`}
+                                  style={{ width: `${flatDetail.percentage}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : isCompleted && !isSelected ? (
                             <p className="text-xs text-green-600 dark:text-green-400 mt-1 font-medium">
                               ✓ Completed
                             </p>
-                          )}
+                          ) : null}
                         </div>
                       </button>
                     )
                   })}
                 </div>
               </div>
-            ))}
+            )
+            })}
           </div>
         ) : (
           <div className="bg-white dark:bg-dark-card rounded-2xl shadow-lg border border-neutral-200 dark:border-dark-border p-12 text-center">
@@ -546,6 +709,23 @@ export default function BulkUpdate() {
           </div>
         )}
       </div>
+
+      {/* Enhanced Work Item Modal */}
+      {showEnhancedModal && selectedFlat && (
+        <EnhancedFlatWorkItem
+          flat={selectedFlat}
+          workItem={workItems.find(w => w.id === selectedWorkItem)}
+          onSave={() => {
+            setShowEnhancedModal(false)
+            setSelectedFlat(null)
+            loadExistingProgress()
+          }}
+          onClose={() => {
+            setShowEnhancedModal(false)
+            setSelectedFlat(null)
+          }}
+        />
+      )}
     </div>
   )
 }

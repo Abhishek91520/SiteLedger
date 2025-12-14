@@ -4,7 +4,7 @@ import { OrbitControls, PerspectiveCamera, Text, Box } from '@react-three/drei'
 import { motion } from 'framer-motion'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../context/ThemeContext'
-import { Building2, Filter, X, Info, Home } from 'lucide-react'
+import { Building2, Filter, X, Info, Home, StickyNote, Camera, CheckCircle2, Circle } from 'lucide-react'
 
 // 3D Flat Component - Perfect cube
 function FlatTile({ flat, position, onFlatClick }) {
@@ -330,31 +330,75 @@ export default function VisualProgress() {
   const handleFlatClick = async (flat) => {
     // Load detailed work item progress for this flat
     try {
+      // Use flat.id (not flat.flat_id)
+      const flatId = flat.id
+      
+      // Load enhanced work item progress with detailed checks
       const workItemsProgress = await Promise.all(workItems.map(async (workItem) => {
         const { data: itemEntries } = await supabase
           .from('progress_entries')
           .select('quantity_completed, entry_date')
-          .eq('flat_id', flat.flat_id)
+          .eq('flat_id', flatId)
           .eq('work_item_id', workItem.id)
 
-        // Check if this work item is completed for this flat (any entry with quantity > 0)
-        const isCompleted = (itemEntries || []).some(e => e.quantity_completed > 0)
-        const percentage = isCompleted ? 100 : 0
+        // Load detailed checks from work_item_details_progress
+        const { data: detailChecks } = await supabase
+          .from('work_item_details_progress')
+          .select(`
+            *,
+            detail_config:work_item_detail_config(*)
+          `)
+          .eq('flat_id', flatId)
+          .eq('work_item_id', workItem.id)
+
+        // Calculate completion based on detailed checks if available
+        let percentage = 0
+        let completedChecks = 0
+        let totalChecks = 0
+
+        if (detailChecks && detailChecks.length > 0) {
+          totalChecks = detailChecks.length
+          completedChecks = detailChecks.filter(c => c.is_completed).length
+          percentage = totalChecks > 0 ? Math.round((completedChecks / totalChecks) * 100) : 0
+        } else {
+          // Fallback to old system
+          const isCompleted = (itemEntries || []).some(e => e.quantity_completed > 0)
+          percentage = isCompleted ? 100 : 0
+          completedChecks = isCompleted ? 1 : 0
+          totalChecks = 1
+        }
 
         return {
           work_item_code: workItem.code,
           work_item_name: workItem.name,
-          completed_quantity: isCompleted ? 1 : 0,
-          total_quantity: 1,
-          unit: 'flat',
+          completed_quantity: completedChecks,
+          total_quantity: totalChecks,
+          unit: detailChecks && detailChecks.length > 0 ? 'checks' : 'flat',
           completion_percentage: percentage,
-          last_updated: itemEntries && itemEntries.length > 0 ? itemEntries[0].entry_date : null
+          last_updated: itemEntries && itemEntries.length > 0 ? itemEntries[0].entry_date : null,
+          detailed_checks: detailChecks || []
         }
       }))
 
+      // Load flat notes
+      const { data: notes } = await supabase
+        .from('flat_notes')
+        .select('*')
+        .eq('flat_id', flatId)
+        .order('created_at', { ascending: false })
+
+      // Load flat images
+      const { data: images } = await supabase
+        .from('flat_images')
+        .select('*')
+        .eq('flat_id', flatId)
+        .order('uploaded_at', { ascending: false })
+
       setSelectedFlat({
         ...flat,
-        work_items_progress: workItemsProgress
+        work_items_progress: workItemsProgress,
+        notes: notes || [],
+        images: images || []
       })
       setIsSidebarOpen(true)
     } catch (error) {
@@ -607,7 +651,54 @@ export default function VisualProgress() {
                 </div>
               </div>
 
-              {/* Work Items Progress */}
+              {/* Flat Notes */}
+              {selectedFlat.notes && selectedFlat.notes.length > 0 && (
+                <div className="mt-4 md:mt-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <StickyNote size={18} className="text-neutral-700 dark:text-dark-text" />
+                    <h4 className="text-base md:text-lg font-bold text-neutral-800 dark:text-dark-text">Notes</h4>
+                  </div>
+                  <div className="space-y-2">
+                    {selectedFlat.notes.map((note) => (
+                      <div key={note.id} className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                        <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">{note.note_text}</p>
+                        <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-2">
+                          {new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Flat Images */}
+              {selectedFlat.images && selectedFlat.images.length > 0 && (
+                <div className="mt-4 md:mt-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Camera size={18} className="text-neutral-700 dark:text-dark-text" />
+                    <h4 className="text-base md:text-lg font-bold text-neutral-800 dark:text-dark-text">Images ({selectedFlat.images.length})</h4>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {selectedFlat.images.map((image) => (
+                      <div key={image.id} className="relative aspect-square rounded-lg overflow-hidden bg-neutral-100 dark:bg-neutral-800">
+                        <img
+                          src={image.image_url}
+                          alt={image.caption || 'Flat image'}
+                          className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
+                          onClick={() => window.open(image.image_url, '_blank')}
+                        />
+                        {image.caption && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1 px-2">
+                            {image.caption}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Work Items Progress - Moved to bottom */}
               {selectedFlat.work_items_progress && selectedFlat.work_items_progress.length > 0 && (
                 <div className="mt-4 md:mt-6">
                   <h4 className="text-base md:text-lg font-bold text-neutral-800 dark:text-dark-text mb-3 md:mb-4">Work Items Progress</h4>
@@ -624,12 +715,12 @@ export default function VisualProgress() {
                         </div>
                         <p className="text-xs text-neutral-600 dark:text-dark-muted mb-2 line-clamp-1">{item.work_item_name}</p>
                         <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 mb-2">
-                          <span className="font-medium">{item.completed_quantity.toFixed(1)}</span>
+                          <span className="font-medium">{item.completed_quantity}</span>
                           <span>/</span>
-                          <span>{item.total_quantity.toFixed(1)}</span>
+                          <span>{item.total_quantity}</span>
                           <span className="ml-auto font-medium">{item.unit}</span>
                         </div>
-                        <div className="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-2.5 md:h-2">
+                        <div className="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-2.5 md:h-2 mb-2">
                           <div
                             className={`h-full rounded-full transition-all duration-300 ${
                               item.completion_percentage === 100
@@ -641,6 +732,29 @@ export default function VisualProgress() {
                             style={{ width: `${item.completion_percentage}%` }}
                           />
                         </div>
+                        
+                        {/* Show detailed checks if available */}
+                        {item.detailed_checks && item.detailed_checks.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {item.detailed_checks.map((check) => (
+                              <div key={check.id} className="flex items-center gap-2 text-xs">
+                                {check.is_completed ? (
+                                  <CheckCircle2 size={14} className="text-green-500 flex-shrink-0" />
+                                ) : (
+                                  <Circle size={14} className="text-neutral-400 dark:text-neutral-600 flex-shrink-0" />
+                                )}
+                                <span className={check.is_completed ? "text-neutral-700 dark:text-neutral-300" : "text-neutral-500 dark:text-neutral-500"}>
+                                  {check.detail_config?.detail_name}
+                                  {check.detail_config?.category && (
+                                    <span className="text-neutral-400 dark:text-neutral-600 ml-1">
+                                      ({check.detail_config.category.replace('_', ' ')})
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

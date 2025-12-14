@@ -11,7 +11,7 @@ export default function Billing() {
   const { isDark } = useTheme()
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background-soft via-white to-primary-50/30 dark:from-dark-bg dark:via-dark-bg dark:to-dark-card pb-20 md:pb-6 transition-colors duration-300">
+    <div className="min-h-screen bg-gradient-to-br from-background-soft via-white to-primary-50/30 dark:from-dark-bg dark:via-dark-bg dark:to-dark-card pb-24 md:pb-6 transition-colors duration-300">
       {/* Header with Gradient */}
       <div className="bg-gradient-to-r from-primary-500 to-primary-600 dark:from-primary-600 dark:to-blue-700 text-white px-4 py-8 md:px-6 md:py-10 shadow-soft-lg">
         <div className="max-w-7xl mx-auto">
@@ -1102,10 +1102,18 @@ function CreateTaxInvoiceModal({ onClose, onSuccess }) {
   }
 
   const calculateTotals = () => {
-    const baseAmount = parseFloat(formData.paymentAmount) || 0
+    // User enters GST-inclusive amount
+    const totalAmount = parseFloat(formData.paymentAmount) || 0
+    
+    // Calculate base amount by removing GST
+    // Total = Base + (Base * 18%)
+    // Total = Base * 1.18
+    // Base = Total / 1.18
+    const gstMultiplier = 1 + (formData.cgstRate + formData.sgstRate) / 100
+    const baseAmount = totalAmount / gstMultiplier
     const cgstAmount = (baseAmount * formData.cgstRate) / 100
     const sgstAmount = (baseAmount * formData.sgstRate) / 100
-    const total = baseAmount + cgstAmount + sgstAmount
+    const total = totalAmount
 
     return { baseAmount, cgstAmount, sgstAmount, total }
   }
@@ -1235,7 +1243,7 @@ function CreateTaxInvoiceModal({ onClose, onSuccess }) {
 
           <div>
             <label className="block text-sm font-medium text-neutral-700 dark:text-dark-text mb-2">
-              Payment Amount * (Excluding GST)
+              Payment Amount * (Including GST)
             </label>
             <input
               type="number"
@@ -1243,8 +1251,11 @@ function CreateTaxInvoiceModal({ onClose, onSuccess }) {
               value={formData.paymentAmount}
               onChange={(e) => setFormData({ ...formData, paymentAmount: parseFloat(e.target.value) })}
               className="w-full px-4 py-3 bg-white dark:bg-dark-hover border border-neutral-300 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-primary-500 text-neutral-800 dark:text-dark-text"
-              placeholder="Enter amount received"
+              placeholder="Enter total amount received (with GST)"
             />
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+              Enter the total amount including 18% GST (CGST 9% + SGST 9%)
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -1282,7 +1293,7 @@ function CreateTaxInvoiceModal({ onClose, onSuccess }) {
           {/* GST Calculation Preview */}
           <div className="bg-neutral-50 dark:bg-dark-hover rounded-xl p-4 space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-neutral-600 dark:text-dark-muted">Payment Amount:</span>
+              <span className="text-neutral-600 dark:text-dark-muted">Base Amount (Excl. GST):</span>
               <span className="font-semibold text-neutral-800 dark:text-dark-text">₹{baseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>
             <div className="flex justify-between text-sm">
