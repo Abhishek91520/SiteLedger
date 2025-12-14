@@ -283,7 +283,12 @@ export default function EnhancedFlatWorkItem({
       
       if (allComplete) {
         // Update or create progress entry
-        const quantity = flat.is_joint_refuge && workItem.code === 'D' ? 0.5 : 1
+        // Quantity = number of checks completed (e.g., 2 for normal flats with 2 bathrooms)
+        // Special case: joint refuge with bathroom work = 0.5 (shared bathroom)
+        let quantity = detailConfigs.length
+        if (flat.is_joint_refuge && workItem.code === 'D') {
+          quantity = 0.5
+        }
 
         const existing = await supabase
           .from('progress_entries')
@@ -297,8 +302,9 @@ export default function EnhancedFlatWorkItem({
             .from('progress_entries')
             .update({
               quantity_completed: quantity,
-              completion_date: new Date().toISOString(),
-              remarks: note || 'All checks completed'
+              entry_date: new Date().toISOString().split('T')[0],
+              remarks: note || 'All checks completed',
+              updated_at: new Date().toISOString()
             })
             .eq('id', existing.data.id)
         } else {
@@ -308,9 +314,9 @@ export default function EnhancedFlatWorkItem({
               flat_id: flat.id,
               work_item_id: workItem.id,
               quantity_completed: quantity,
-              completion_date: new Date().toISOString(),
+              entry_date: new Date().toISOString().split('T')[0],
               remarks: note || 'All checks completed',
-              recorded_by: user.data.user?.id
+              created_by: user.data.user?.id
             })
         }
       }
