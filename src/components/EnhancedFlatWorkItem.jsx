@@ -278,26 +278,42 @@ export default function EnhancedFlatWorkItem({
         }
       }
 
-      // Check if all checks are complete to update main progress_entries
+      // Update main progress_entries based on completion status
       const allComplete = detailConfigs.every(config => progress[config.id]?.is_completed)
+      const completedCount = detailConfigs.filter(config => progress[config.id]?.is_completed).length
+      
+      console.log('Progress entry logic:', {
+        flat: flat.flat_number,
+        workItem: workItem.code,
+        allComplete,
+        completedCount,
+        totalConfigs: detailConfigs.length,
+        is_joint_refuge: flat.is_joint_refuge
+      })
+      
+      // Check if entry exists
+      const { data: existing } = await supabase
+        .from('progress_entries')
+        .select('id')
+        .eq('flat_id', flat.id)
+        .eq('work_item_id', workItem.id)
+        .maybeSingle()
+      
+      console.log('Existing progress entry:', existing ? 'Found' : 'Not found')
       
       if (allComplete) {
-        // Update or create progress entry
+        // All checks complete - create/update progress entry
         // Quantity = number of checks completed (e.g., 2 for normal flats with 2 bathrooms)
         // Special case: joint refuge with bathroom work = 0.5 (shared bathroom)
         let quantity = detailConfigs.length
-        if (flat.is_joint_refuge && workItem.code === 'D') {
+        if (flat.is_joint_refuge === true && workItem.code === 'D') {
           quantity = 0.5
+          console.log('Joint refuge bathroom detected - setting quantity to 0.5')
         }
+        
+        console.log('Saving progress_entry with quantity:', quantity)
 
-        const existing = await supabase
-          .from('progress_entries')
-          .select('id')
-          .eq('flat_id', flat.id)
-          .eq('work_item_id', workItem.id)
-          .single()
-
-        if (existing.data) {
+        if (existing) {
           await supabase
             .from('progress_entries')
             .update({
@@ -306,7 +322,7 @@ export default function EnhancedFlatWorkItem({
               remarks: note || 'All checks completed',
               updated_at: new Date().toISOString()
             })
-            .eq('id', existing.data.id)
+            .eq('id', existing.id)
         } else {
           await supabase
             .from('progress_entries')
@@ -319,6 +335,15 @@ export default function EnhancedFlatWorkItem({
               created_by: user.data.user?.id
             })
         }
+      } else if (existing) {
+        // Not all complete but entry exists - delete it
+        // (constraint requires quantity > 0, can't have partial in progress_entries)
+        await supabase
+          .from('progress_entries')
+          .delete()
+          .eq('id', existing.id)
+        
+        console.log('Deleted progress_entry - not all checks complete')
       }
 
       onSave()
