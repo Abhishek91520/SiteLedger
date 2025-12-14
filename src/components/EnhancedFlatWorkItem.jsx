@@ -388,8 +388,8 @@ export default function EnhancedFlatWorkItem({
   const completedCount = detailConfigs.filter(config => progress[config.id]?.is_completed).length
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-dark-card rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 pb-20 md:pb-4">
+      <div className="bg-white dark:bg-dark-card rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto flex flex-col">
         {/* Header */}
         <div className="sticky top-0 bg-white dark:bg-dark-card border-b border-neutral-200 dark:border-dark-border p-6 flex items-center justify-between">
           <div>
@@ -523,7 +523,7 @@ export default function EnhancedFlatWorkItem({
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-white dark:bg-dark-card border-t border-neutral-200 dark:border-dark-border p-6 flex justify-between">
+        <div className="sticky bottom-0 bg-white dark:bg-dark-card border-t border-neutral-200 dark:border-dark-border p-6 flex justify-between z-50 shadow-lg">
           <button
             onClick={onClose}
             className="px-6 py-3 border border-neutral-300 dark:border-dark-border rounded-xl font-semibold text-neutral-700 dark:text-dark-text hover:bg-neutral-50 dark:hover:bg-dark-hover transition-colors"
