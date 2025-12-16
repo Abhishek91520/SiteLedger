@@ -51,7 +51,7 @@ export default function Dashboard() {
   
   // Reload data when filters change
   useEffect(() => {
-    if (!loading) {
+    if (!loading && wings.length > 0 && workItemsProgress.length > 0) {
       loadFilteredData()
     }
   }, [filterWing, filterWorkItem, filterDateRange])
@@ -69,90 +69,15 @@ export default function Dashboard() {
       setProject(projectData)
 
       // Load work items progress
-      const { data: workItems } = await supabase
-        .from('work_items')
-        .select('*')
-        .eq('is_active', true)
-        .order('code')
-
-      // Get all progress entries
-      const { data: allProgressEntries } = await supabase
-        .from('progress_entries')
-        .select('work_item_id, quantity_completed')
-
-      const workItemsWithProgress = (workItems || []).map(item => {
-        const itemEntries = (allProgressEntries || []).filter(entry => entry.work_item_id === item.id)
-        const completed = itemEntries.reduce((sum, entry) => sum + entry.quantity_completed, 0)
-        const percentage = item.total_quantity > 0 ? (completed / item.total_quantity) * 100 : 0
-        return {
-          name: item.code,
-          fullName: item.name,
-          completed,
-          total: item.total_quantity,
-          percentage: Math.round(percentage),
-          remaining: item.total_quantity - completed,
-        }
-      })
+      const workItemsWithProgress = await loadWorkItemsProgress()
       setWorkItemsProgress(workItemsWithProgress)
 
       // Load wing progress
-      const { data: wings } = await supabase
-        .from('wings')
-        .select('id, code, name')
-        .order('code')
-
-      // Get flats per wing
-      const { data: allFlatsWithProgress } = await supabase
-        .from('flats')
-        .select(`
-          id,
-          floor_id,
-          floors!inner(wing_id)
-        `)
-
-      // Get progress entries per flat
-      const { data: flatProgressCounts } = await supabase
-        .from('progress_entries')
-        .select('flat_id')
-
-      const wingData = (wings || []).map(wing => {
-        const wingFlats = (allFlatsWithProgress || []).filter(flat => flat.floors.wing_id === wing.id)
-        const totalFlats = wingFlats.length
-        const flatsWithProgress = wingFlats.filter(flat => 
-          (flatProgressCounts || []).some(p => p.flat_id === flat.id)
-        ).length
-        const completionPercentage = totalFlats > 0 ? (flatsWithProgress / totalFlats) * 100 : 0
-        
-        return {
-          name: `Wing ${wing.code}`,
-          totalFlats,
-          withProgress: flatsWithProgress,
-          pending: totalFlats - flatsWithProgress,
-          completion: Math.round(completionPercentage),
-        }
-      })
+      const wingData = await loadWingProgress()
       setWingProgress(wingData)
 
       // Load recent entries
-      const { data: entries } = await supabase
-        .from('progress_entries')
-        .select('*, flats(flat_number, floors(wings(code))), work_items(code, name)')
-        .order('entry_date', { ascending: false })
-        .limit(10)
-
-      // Transform the data structure
-      const transformedEntries = (entries || []).map(entry => ({
-        ...entry,
-        flat: {
-          flat_number: entry.flats?.flat_number,
-          wing: {
-            code: entry.flats?.floors?.wings?.code
-          }
-        },
-        work_item: entry.work_items
-      }))
-
-      setRecentEntries(transformedEntries)
+      await loadRecentEntries()
 
       // Calculate overall stats
       const { count: totalFlats } = await supabase
@@ -201,13 +126,165 @@ export default function Dashboard() {
     }
   }
 
+  const loadWorkItemsProgress = async () => {
+    try {
+      const { data: workItems } = await supabase
+        .from('work_items')
+        .select('*')
+        .eq('is_active', true)
+        .order('code')
+
+      // Get all progress entries
+      const { data: allProgressEntries } = await supabase
+        .from('progress_entries')
+        .select('work_item_id, quantity_completed')
+
+      const workItemsWithProgress = (workItems || []).map(item => {
+        const itemEntries = (allProgressEntries || []).filter(entry => entry.work_item_id === item.id)
+        const completed = itemEntries.reduce((sum, entry) => sum + entry.quantity_completed, 0)
+        const percentage = item.total_quantity > 0 ? (completed / item.total_quantity) * 100 : 0
+        return {
+          name: item.code,
+          fullName: item.name,
+          completed,
+          total: item.total_quantity,
+          percentage: Math.round(percentage),
+          remaining: item.total_quantity - completed,
+        }
+      })
+      
+      return workItemsWithProgress
+    } catch (error) {
+      console.error('Error loading work items progress:', error)
+      return []
+    }
+  }
+
+  const loadWingProgress = async () => {
+    try {
+      const { data: wings } = await supabase
+        .from('wings')
+        .select('id, code, name')
+        .order('code')
+
+      // Get flats per wing
+      const { data: allFlatsWithProgress } = await supabase
+        .from('flats')
+        .select(`
+          id,
+          floor_id,
+          floors!inner(wing_id)
+        `)
+
+      // Get progress entries per flat
+      const { data: flatProgressCounts } = await supabase
+        .from('progress_entries')
+        .select('flat_id')
+
+      const wingData = (wings || []).map(wing => {
+        const wingFlats = (allFlatsWithProgress || []).filter(flat => flat.floors.wing_id === wing.id)
+        const totalFlats = wingFlats.length
+        const flatsWithProgress = wingFlats.filter(flat => 
+          (flatProgressCounts || []).some(p => p.flat_id === flat.id)
+        ).length
+        const completionPercentage = totalFlats > 0 ? (flatsWithProgress / totalFlats) * 100 : 0
+        
+        return {
+          wing: wing.code,
+          name: `Wing ${wing.code}`,
+          totalFlats,
+          withProgress: flatsWithProgress,
+          pending: totalFlats - flatsWithProgress,
+          completion: Math.round(completionPercentage),
+        }
+      })
+      
+      return wingData
+    } catch (error) {
+      console.error('Error loading wing progress:', error)
+      return []
+    }
+  }
+
+  const loadRecentEntries = async () => {
+    try {
+      let query = supabase
+        .from('progress_entries')
+        .select('*, flats!inner(flat_number, floors!inner(wings!inner(code))), work_items(code, name)')
+      
+      // Apply wing filter
+      if (filterWing !== 'ALL') {
+        query = query.eq('flats.floors.wings.code', filterWing)
+      }
+      
+      // Apply work item filter
+      if (filterWorkItem !== 'ALL') {
+        const { data: wiData } = await supabase
+          .from('work_items')
+          .select('id')
+          .eq('code', filterWorkItem)
+          .single()
+        if (wiData) {
+          query = query.eq('work_item_id', wiData.id)
+        }
+      }
+      
+      query = query.order('entry_date', { ascending: false }).limit(10)
+      const { data: entries } = await query
+
+      // Transform the data structure
+      const transformedEntries = (entries || []).map(entry => ({
+        ...entry,
+        flat: {
+          flat_number: entry.flats?.flat_number,
+          wing: {
+            code: entry.flats?.floors?.wings?.code
+          }
+        },
+        work_item: entry.work_items
+      }))
+
+      setRecentEntries(transformedEntries)
+    } catch (error) {
+      console.error('Error loading recent entries:', error)
+    }
+  }
+
   const loadFilteredData = async () => {
     try {
-      // Reload timeline, top floors with current filters
+      setLoading(true)
+      
+      // Reload timeline with filters
       await loadCompletionTimeline()
+      
+      // Reload top floors with filters
       await loadTopPerformingFloors()
+      
+      // Reload recent entries with filters
+      await loadRecentEntries()
+      
+      // Re-filter work items progress display
+      if (filterWorkItem !== 'ALL') {
+        const fullWorkItems = await loadWorkItemsProgress()
+        const filtered = fullWorkItems.filter(wi => wi.name === filterWorkItem)
+        setWorkItemsProgress(filtered)
+      } else {
+        setWorkItemsProgress(await loadWorkItemsProgress())
+      }
+      
+      // Re-filter wing progress display
+      if (filterWing !== 'ALL') {
+        const fullWings = await loadWingProgress()
+        const filtered = fullWings.filter(w => w.wing === filterWing)
+        setWingProgress(filtered)
+      } else {
+        setWingProgress(await loadWingProgress())
+      }
+      
     } catch (error) {
       console.error('Error loading filtered data:', error)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -229,16 +306,13 @@ export default function Dashboard() {
       
       // Apply work item filter
       if (filterWorkItem !== 'ALL') {
-        const workItem = workItemsProgress.find(w => w.name === filterWorkItem)
-        if (workItem) {
-          const { data: wiData } = await supabase
-            .from('work_items')
-            .select('id')
-            .eq('code', workItem.name)
-            .single()
-          if (wiData) {
-            query = query.eq('work_item_id', wiData.id)
-          }
+        const { data: wiData } = await supabase
+          .from('work_items')
+          .select('id')
+          .eq('code', filterWorkItem)
+          .single()
+        if (wiData) {
+          query = query.eq('work_item_id', wiData.id)
         }
       }
       
@@ -270,15 +344,22 @@ export default function Dashboard() {
 
   const loadTopPerformingFloors = async () => {
     try {
-      const { data: floors } = await supabase
+      let query = supabase
         .from('floors')
         .select(`
           id,
           floor_number,
-          wings(code),
+          wings!inner(code),
           flats(id)
         `)
         .order('floor_number')
+      
+      // Apply wing filter
+      if (filterWing !== 'ALL') {
+        query = query.eq('wings.code', filterWing)
+      }
+      
+      const { data: floors } = await query
 
       const floorStats = await Promise.all((floors || []).map(async (floor) => {
         const flatIds = floor.flats.map(f => f.id)
@@ -508,10 +589,7 @@ export default function Dashboard() {
               </label>
               <select
                 value={filterDateRange}
-                onChange={(e) => {
-                  setFilterDateRange(Number(e.target.value))
-                  loadCompletionTimeline()
-                }}
+                onChange={(e) => setFilterDateRange(Number(e.target.value))}
                 className="w-full px-4 py-2.5 bg-white dark:bg-dark-hover border border-neutral-300 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-primary-500 text-neutral-800 dark:text-dark-text"
               >
                 <option value="7">Last 7 Days</option>
