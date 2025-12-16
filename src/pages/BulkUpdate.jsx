@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTheme } from '../context/ThemeContext'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { CheckSquare, Square, Filter, Save, AlertCircle, CheckCircle, Building2, Home } from 'lucide-react'
+import { CheckSquare, Square, Filter, Save, AlertCircle, CheckCircle, Building2, Home, FileText, Camera, Info } from 'lucide-react'
 import EnhancedFlatWorkItem from '../components/EnhancedFlatWorkItem'
 
 export default function BulkUpdate() {
@@ -18,11 +18,15 @@ export default function BulkUpdate() {
   const [flats, setFlats] = useState([])
   const [existingProgress, setExistingProgress] = useState({})
   const [detailProgress, setDetailProgress] = useState({}) // For detailed checks completion
+  const [flatMetadata, setFlatMetadata] = useState({}) // Notes and images counts
 
   // Filter states
   const [selectedWing, setSelectedWing] = useState('')
   const [selectedWorkItem, setSelectedWorkItem] = useState('')
   const [selectedFloor, setSelectedFloor] = useState('')
+  const [filterCompletionStatus, setFilterCompletionStatus] = useState('ALL') // ALL, COMPLETED, PARTIAL, PENDING
+  const [filterDocumentation, setFilterDocumentation] = useState('ALL') // ALL, HAS_NOTES, HAS_IMAGES, NO_DOCS
+  const [filterBHK, setFilterBHK] = useState('ALL') // ALL, 1BHK, 2BHK
 
   // Selection state - { flatId: { workItemId: true/false } }
   const [selections, setSelections] = useState({})
@@ -97,6 +101,41 @@ export default function BulkUpdate() {
     }
   }
 
+  const loadFlatMetadata = async () => {
+    if (flats.length === 0) return
+
+    try {
+      // Load notes counts
+      const { data: notesData, error: notesError } = await supabase
+        .from('flat_notes')
+        .select('flat_id')
+        .in('flat_id', flats.map(f => f.id))
+
+      if (notesError) throw notesError
+
+      // Load images counts
+      const { data: imagesData, error: imagesError } = await supabase
+        .from('flat_images')
+        .select('flat_id')
+        .in('flat_id', flats.map(f => f.id))
+
+      if (imagesError) throw imagesError
+
+      // Count notes and images per flat
+      const metadata = {}
+      flats.forEach(flat => {
+        metadata[flat.id] = {
+          notesCount: notesData?.filter(n => n.flat_id === flat.id).length || 0,
+          imagesCount: imagesData?.filter(i => i.flat_id === flat.id).length || 0
+        }
+      })
+
+      setFlatMetadata(metadata)
+    } catch (error) {
+      console.error('Error loading flat metadata:', error)
+    }
+  }
+
   const loadExistingProgress = async () => {
     try {
       const { data, error } = await supabase
@@ -119,8 +158,11 @@ export default function BulkUpdate() {
 
       setExistingProgress(progressMap)
 
-      // Load detailed progress for sub-checks
-      await loadDetailProgress()
+      // Load detailed progress for sub-checks and metadata
+      await Promise.all([
+        loadDetailProgress(),
+        loadFlatMetadata()
+      ])
     } catch (error) {
       console.error('Error loading progress:', error)
     }
@@ -229,8 +271,48 @@ export default function BulkUpdate() {
   const getFilteredFlats = () => {
     let filtered = flats
 
+    // Floor filter
     if (selectedFloor) {
       filtered = filtered.filter(f => f.floors.floor_number === parseInt(selectedFloor))
+    }
+
+    // Completion status filter
+    if (filterCompletionStatus !== 'ALL' && selectedWorkItem) {
+      filtered = filtered.filter(flat => {
+        const flatDetail = detailProgress[flat.id] || { percentage: 0 }
+        
+        if (filterCompletionStatus === 'COMPLETED') {
+          return flatDetail.percentage === 100
+        } else if (filterCompletionStatus === 'PARTIAL') {
+          return flatDetail.percentage > 0 && flatDetail.percentage < 100
+        } else if (filterCompletionStatus === 'PENDING') {
+          return flatDetail.percentage === 0
+        }
+        return true
+      })
+    }
+
+    // Documentation filter
+    if (filterDocumentation !== 'ALL') {
+      filtered = filtered.filter(flat => {
+        const metadata = flatMetadata[flat.id] || { notesCount: 0, imagesCount: 0 }
+        
+        if (filterDocumentation === 'HAS_NOTES') {
+          return metadata.notesCount > 0
+        } else if (filterDocumentation === 'HAS_IMAGES') {
+          return metadata.imagesCount > 0
+        } else if (filterDocumentation === 'HAS_BOTH') {
+          return metadata.notesCount > 0 && metadata.imagesCount > 0
+        } else if (filterDocumentation === 'NO_DOCS') {
+          return metadata.notesCount === 0 && metadata.imagesCount === 0
+        }
+        return true
+      })
+    }
+
+    // BHK filter
+    if (filterBHK !== 'ALL') {
+      filtered = filtered.filter(flat => flat.bhk_type === filterBHK)
     }
 
     return filtered
@@ -471,6 +553,54 @@ export default function BulkUpdate() {
 
             <div>
               <label className="block text-sm font-medium text-neutral-700 dark:text-dark-text mb-2">
+                Completion Status
+              </label>
+              <select
+                value={filterCompletionStatus}
+                onChange={(e) => setFilterCompletionStatus(e.target.value)}
+                className="w-full px-4 py-3 bg-white dark:bg-dark-hover border border-neutral-300 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-primary-500 text-neutral-800 dark:text-dark-text"
+              >
+                <option value="ALL">All Flats</option>
+                <option value="COMPLETED">Completed (100%)</option>
+                <option value="PARTIAL">Partial (1-99%)</option>
+                <option value="PENDING">Pending (0%)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 dark:text-dark-text mb-2">
+                Documentation
+              </label>
+              <select
+                value={filterDocumentation}
+                onChange={(e) => setFilterDocumentation(e.target.value)}
+                className="w-full px-4 py-3 bg-white dark:bg-dark-hover border border-neutral-300 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-primary-500 text-neutral-800 dark:text-dark-text"
+              >
+                <option value="ALL">All Flats</option>
+                <option value="HAS_NOTES">Has Notes</option>
+                <option value="HAS_IMAGES">Has Images</option>
+                <option value="HAS_BOTH">Has Notes & Images</option>
+                <option value="NO_DOCS">No Documentation</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 dark:text-dark-text mb-2">
+                BHK Type
+              </label>
+              <select
+                value={filterBHK}
+                onChange={(e) => setFilterBHK(e.target.value)}
+                className="w-full px-4 py-3 bg-white dark:bg-dark-hover border border-neutral-300 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-primary-500 text-neutral-800 dark:text-dark-text"
+              >
+                <option value="ALL">All Types</option>
+                <option value="1BHK">1 BHK</option>
+                <option value="2BHK">2 BHK</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 dark:text-dark-text mb-2">
                 Completion Date
               </label>
               <input
@@ -482,6 +612,19 @@ export default function BulkUpdate() {
               />
             </div>
           </div>
+
+          {/* Filter Status */}
+          {selectedWing && selectedWorkItem && (
+            <div className="mt-4 p-3 bg-neutral-50 dark:bg-dark-hover rounded-lg border border-neutral-200 dark:border-dark-border">
+              <div className="flex items-center gap-2 text-sm">
+                <Info size={16} className="text-neutral-600 dark:text-dark-muted" />
+                <span className="text-neutral-700 dark:text-dark-text">
+                  Showing <span className="font-bold text-primary-600 dark:text-primary-400">{getFilteredFlats().length}</span> of{' '}
+                  <span className="font-bold">{flats.length}</span> flats
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Selection Actions */}
@@ -650,6 +793,24 @@ export default function BulkUpdate() {
                           </div>
                         )}
 
+                        {/* Notes and Images Icons at Top Left */}
+                        {(flatMetadata[flat.id]?.notesCount > 0 || flatMetadata[flat.id]?.imagesCount > 0) && (
+                          <div className="absolute -top-2 -left-2 z-10 flex gap-1">
+                            {flatMetadata[flat.id]?.notesCount > 0 && (
+                              <div className="bg-blue-600 text-white px-1.5 py-0.5 rounded-full flex items-center gap-0.5 text-xs font-semibold shadow-md">
+                                <FileText size={10} />
+                                <span>{flatMetadata[flat.id].notesCount}</span>
+                              </div>
+                            )}
+                            {flatMetadata[flat.id]?.imagesCount > 0 && (
+                              <div className="bg-purple-600 text-white px-1.5 py-0.5 rounded-full flex items-center gap-0.5 text-xs font-semibold shadow-md">
+                                <Camera size={10} />
+                                <span>{flatMetadata[flat.id].imagesCount}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         <div className="flex items-start justify-between mb-2">
                           <Home size={16} className={`${
                             isSelected ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-400 dark:text-neutral-600'
@@ -743,7 +904,7 @@ export default function BulkUpdate() {
           onSave={() => {
             setShowEnhancedModal(false)
             setSelectedFlat(null)
-            loadExistingProgress()
+            loadExistingProgress() // This now also loads metadata
             loadDetailProgress() // Refresh floor and flat completion percentages
           }}
           onClose={() => {

@@ -619,6 +619,22 @@ export default function VisualProgress() {
                       SHARED BATH
                     </span>
                   )}
+                  {(selectedFlat.notes?.length > 0 || selectedFlat.images?.length > 0) && (
+                    <div className="flex gap-1.5 ml-auto">
+                      {selectedFlat.notes?.length > 0 && (
+                        <span className="px-2 py-1 text-xs font-bold bg-blue-600 text-white rounded-md shadow-md flex items-center gap-1">
+                          <StickyNote size={12} />
+                          {selectedFlat.notes.length}
+                        </span>
+                      )}
+                      {selectedFlat.images?.length > 0 && (
+                        <span className="px-2 py-1 text-xs font-bold bg-purple-600 text-white rounded-md shadow-md flex items-center gap-1">
+                          <Camera size={12} />
+                          {selectedFlat.images.length}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {selectedFlat.is_joint_refuge && (
                   <p className="text-xs text-primary-600 dark:text-primary-400 mt-2">

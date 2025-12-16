@@ -303,12 +303,19 @@ export default function EnhancedFlatWorkItem({
       
       if (allComplete) {
         // All checks complete - create/update progress entry
-        // Quantity = number of checks completed (e.g., 2 for normal flats with 2 bathrooms)
-        // Special case: joint refuge with bathroom work = 0.5 (shared bathroom)
+        // Quantity calculation logic:
+        // - Work Item D (Bathroom): 2 for normal, 1 for refugee, 0.5 for joint refuge
+        // - Work Item F & G (Flooring/Skirting): Always 1.0 (0.5 room + 0.5 balcony)
+        // - Other items: Use number of checks
         let quantity = detailConfigs.length
+        
         if (flat.is_joint_refuge === true && workItem.code === 'D') {
           quantity = 0.5
           console.log('Joint refuge bathroom detected - setting quantity to 0.5')
+        } else if (workItem.code === 'F' || workItem.code === 'G') {
+          // F & G: Always 1.0 per flat (room + balcony combined)
+          quantity = 1.0
+          console.log('Work Item F/G detected - setting quantity to 1.0 (room + balcony)')
         }
         
         console.log('Saving progress_entry with quantity:', quantity)
