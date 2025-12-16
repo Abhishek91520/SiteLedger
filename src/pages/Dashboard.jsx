@@ -468,7 +468,7 @@ export default function Dashboard() {
       })
       
       // Fetch all flats with complete details
-      const { data: allFlats } = await supabase
+      const { data: allFlats, error: flatsError } = await supabase
         .from('flats')
         .select(`
           id,
@@ -476,11 +476,32 @@ export default function Dashboard() {
           bhk_type,
           is_refuge,
           is_joint_refuge,
-          floors(floor_number, wings(code, name))
+          floors!inner(
+            floor_number,
+            wings!inner(code, name)
+          )
         `)
-        .order('floors.wings.code')
-        .order('floors.floor_number')
         .order('flat_number')
+      
+      if (flatsError) {
+        console.error('Error fetching flats:', flatsError)
+        alert('Error loading flat data for PDF')
+        setLoading(false)
+        return
+      }
+      
+      console.log('Total flats for PDF:', allFlats?.length)
+      
+      // Sort flats by wing, floor, flat number
+      const sortedFlats = (allFlats || []).sort((a, b) => {
+        const wingCompare = (a.floors?.wings?.code || '').localeCompare(b.floors?.wings?.code || '')
+        if (wingCompare !== 0) return wingCompare
+        
+        const floorCompare = (a.floors?.floor_number || 0) - (b.floors?.floor_number || 0)
+        if (floorCompare !== 0) return floorCompare
+        
+        return (a.flat_number || 0) - (b.flat_number || 0)
+      })
       
       // Fetch all work items
       const { data: allWorkItems } = await supabase
@@ -515,7 +536,7 @@ export default function Dashboard() {
       
       let currentY = 30
       
-      for (const flat of allFlats || []) {
+      for (const flat of sortedFlats) {
         // Check if we need a new page
         if (currentY > 250) {
           doc.addPage()
@@ -580,8 +601,8 @@ export default function Dashboard() {
           head: [['Code', 'Work Item', 'Status', 'Details', 'Last Update']],
           body: flatWorkItemsData,
           theme: 'grid',
-          styles: { fontSize: 8 },
-          headStyles: { fillColor: [99, 102, 241], fontSize: 9 },
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [99, 102, 241], fontSize: 9, fontStyle: 'bold' },
           columnStyles: {
             0: { cellWidth: 15 },
             1: { cellWidth: 60 },
@@ -589,15 +610,22 @@ export default function Dashboard() {
             3: { cellWidth: 35 },
             4: { cellWidth: 30 }
           },
-          didDrawPage: (data) => {
-            currentY = data.cursor.y + 2
-          }
+          margin: { top: 20, left: 14, right: 14 },
+          pageBreak: 'auto',
+          showHead: 'everyPage'
         })
         
-        currentY = doc.lastAutoTable?.finalY + 10 || currentY + 10
+        currentY = doc.lastAutoTable?.finalY + 10
+        
+        // Add spacing between flats
+        if (currentY > 250) {
+          doc.addPage()
+          currentY = 20
+        }
       }
       
       // Save PDF
+      console.log('PDF generation complete, saving...')
       doc.save(`${project?.name || 'Project'}_Comprehensive_Report_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
       setLoading(false)
     } catch (error) {
