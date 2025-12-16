@@ -529,6 +529,67 @@ export default function Dashboard() {
         .from('flat_images')
         .select('flat_id')
       
+      // Create Wing-Floor Summary Table
+      doc.addPage()
+      doc.setFontSize(16)
+      doc.text('Wing & Floor Completion Summary', 14, 20)
+      
+      // Group flats by wing and floor
+      const wingFloorMap = {}
+      for (const flat of sortedFlats) {
+        const wingCode = flat.floors?.wings?.code || 'Unknown'
+        const floorNumber = flat.floors?.floor_number || 0
+        const key = `${wingCode}-${floorNumber}`
+        
+        if (!wingFloorMap[key]) {
+          wingFloorMap[key] = {
+            wing: wingCode,
+            floor: floorNumber,
+            completed: [],
+            pending: []
+          }
+        }
+        
+        // Check if flat has any progress
+        const hasProgress = (allProgress || []).some(p => p.flat_id === flat.id)
+        
+        if (hasProgress) {
+          wingFloorMap[key].completed.push(flat.flat_number)
+        } else {
+          wingFloorMap[key].pending.push(flat.flat_number)
+        }
+      }
+      
+      // Convert to sorted array
+      const wingFloorSummary = Object.values(wingFloorMap).sort((a, b) => {
+        const wingCompare = a.wing.localeCompare(b.wing)
+        if (wingCompare !== 0) return wingCompare
+        return a.floor - b.floor
+      })
+      
+      // Create table data
+      const summaryTableData = wingFloorSummary.map(item => [
+        `Wing ${item.wing}`,
+        `Floor ${item.floor}`,
+        item.completed.length > 0 ? item.completed.sort((a, b) => a - b).join(', ') : '-',
+        item.pending.length > 0 ? item.pending.sort((a, b) => a - b).join(', ') : '-'
+      ])
+      
+      autoTable(doc, {
+        startY: 28,
+        head: [['Wing', 'Floor', 'Completed Flats', 'Pending Flats']],
+        body: summaryTableData,
+        theme: 'grid',
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [34, 197, 94], fontSize: 10, fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 25 },
+          1: { cellWidth: 25 },
+          2: { cellWidth: 65 },
+          3: { cellWidth: 65 }
+        }
+      })
+      
       // Start detailed flat-wise report
       doc.addPage()
       doc.setFontSize(16)
