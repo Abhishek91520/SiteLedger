@@ -9,8 +9,8 @@ import {
 } from 'recharts'
 import { CircularProgressbar, buildStyles } from 'react-circular-progressbar'
 import 'react-circular-progressbar/dist/styles.css'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import html2canvas from 'html2canvas'
 import { format, subDays, parseISO } from 'date-fns'
 
@@ -339,42 +339,43 @@ export default function Dashboard() {
 
   const exportToPDF = async () => {
     try {
-      const pdf = new jsPDF('p', 'mm', 'a4')
-      const pageWidth = pdf.internal.pageSize.getWidth()
+      const doc = new jsPDF('p', 'mm', 'a4')
+      const pageWidth = doc.internal.pageSize.getWidth()
       
       // Title
-      pdf.setFontSize(20)
-      pdf.text(project?.name || 'Project Dashboard', pageWidth / 2, 20, { align: 'center' })
-      pdf.setFontSize(12)
-      pdf.text(`Generated: ${format(new Date(), 'PPP')}`, pageWidth / 2, 28, { align: 'center' })
+      doc.setFontSize(20)
+      doc.text(project?.name || 'Project Dashboard', pageWidth / 2, 20, { align: 'center' })
+      doc.setFontSize(12)
+      doc.text(`Generated: ${format(new Date(), 'PPP')}`, pageWidth / 2, 28, { align: 'center' })
       
       // Overall Stats
-      pdf.setFontSize(14)
-      pdf.text('Overall Statistics', 14, 40)
+      doc.setFontSize(14)
+      doc.text('Overall Statistics', 14, 40)
       const statsData = [
         ['Total Flats', overallStats.totalFlats],
         ['In Progress', overallStats.inProgressFlats],
         ['Overall Completion', `${overallStats.overallCompletion}%`],
         ['Total Entries', overallStats.totalEntries]
       ]
-      pdf.autoTable({ startY: 45, head: [['Metric', 'Value']], body: statsData, theme: 'grid' })
+      autoTable(doc, { startY: 45, head: [['Metric', 'Value']], body: statsData, theme: 'grid' })
       
       // Work Items Progress
-      pdf.text('Work Items Progress', 14, pdf.lastAutoTable.finalY + 15)
+      const finalY = doc.lastAutoTable?.finalY || 45
+      doc.text('Work Items Progress', 14, finalY + 15)
       const workItemsData = workItemsProgress.map(item => [
         item.name,
         item.fullName,
         `${item.completed}/${item.total}`,
         `${item.percentage}%`
       ])
-      pdf.autoTable({
-        startY: pdf.lastAutoTable.finalY + 20,
+      autoTable(doc, {
+        startY: finalY + 20,
         head: [['Code', 'Name', 'Progress', 'Completion']],
         body: workItemsData,
         theme: 'striped'
       })
       
-      pdf.save(`${project?.name || 'Dashboard'}_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      doc.save(`${project?.name || 'Dashboard'}_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
     } catch (error) {
       console.error('Error exporting PDF:', error)
       alert('Failed to export PDF')
