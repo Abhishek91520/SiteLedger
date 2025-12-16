@@ -27,6 +27,8 @@ export default function BulkUpdate() {
   const [filterCompletionStatus, setFilterCompletionStatus] = useState('ALL') // ALL, COMPLETED, PARTIAL, PENDING
   const [filterDocumentation, setFilterDocumentation] = useState('ALL') // ALL, HAS_NOTES, HAS_IMAGES, NO_DOCS
   const [filterBHK, setFilterBHK] = useState('ALL') // ALL, 1BHK, 2BHK
+  const [filterDetailCheck, setFilterDetailCheck] = useState('ALL') // Filter by specific sub-check
+  const [availableDetailConfigs, setAvailableDetailConfigs] = useState([]) // Available sub-checks for selected work item
 
   // Selection state - { flatId: { workItemId: true/false } }
   const [selections, setSelections] = useState({})
@@ -184,6 +186,9 @@ export default function BulkUpdate() {
 
       if (configError) throw configError
       
+      // Store available detail configs for filter dropdown
+      setAvailableDetailConfigs(configs || [])
+      
       // If no detail configs, skip this work item (A, H, I don't have detail checks)
       if (!configs || configs.length === 0) {
         setDetailProgress({})
@@ -230,10 +235,17 @@ export default function BulkUpdate() {
         ).length
 
         const percentage = Math.round((completedChecks / totalChecks) * 100)
+        
+        // Store which specific checks are completed for filtering
+        const completedCheckIds = progress
+          .filter(p => p.flat_id === flat.id && p.is_completed)
+          .map(p => p.detail_config_id)
+        
         detailProgressMap[flat.id] = { 
           percentage, 
           completed: completedChecks, 
-          total: totalChecks 
+          total: totalChecks,
+          completedCheckIds // Array of completed detail_config_id's
         }
       })
 
@@ -313,6 +325,15 @@ export default function BulkUpdate() {
     // BHK filter
     if (filterBHK !== 'ALL') {
       filtered = filtered.filter(flat => flat.bhk_type === filterBHK)
+    }
+
+    // Sub-check filter (e.g., only show flats with completed "Room Flooring" or "Balcony Flooring")
+    if (filterDetailCheck !== 'ALL' && selectedWorkItem) {
+      filtered = filtered.filter(flat => {
+        const flatDetail = detailProgress[flat.id]
+        if (!flatDetail || !flatDetail.completedCheckIds) return false
+        return flatDetail.completedCheckIds.includes(filterDetailCheck)
+      })
     }
 
     return filtered
@@ -598,6 +619,27 @@ export default function BulkUpdate() {
                 <option value="2BHK">2 BHK</option>
               </select>
             </div>
+
+            {/* Sub-check filter - only show if work item has detail configs */}
+            {availableDetailConfigs.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 dark:text-dark-text mb-2">
+                  Specific Check
+                </label>
+                <select
+                  value={filterDetailCheck}
+                  onChange={(e) => setFilterDetailCheck(e.target.value)}
+                  className="w-full px-4 py-3 bg-white dark:bg-dark-hover border border-neutral-300 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-primary-500 text-neutral-800 dark:text-dark-text"
+                >
+                  <option value="ALL">All Checks</option>
+                  {availableDetailConfigs.map(config => (
+                    <option key={config.id} value={config.id}>
+                      ✓ {config.detail_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-neutral-700 dark:text-dark-text mb-2">

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../context/ThemeContext'
-import { Moon, Sun, TrendingUp, CheckCircle2, Clock, AlertCircle, Activity, Layers, Filter, FileText, Camera, Award, Calendar, BarChart3, Download, Target, Zap, Users } from 'lucide-react'
+import { Moon, Sun, TrendingUp, CheckCircle2, Clock, AlertCircle, Activity, Layers, Filter, FileText, Camera, Award, Calendar, BarChart3, Download, Target, Zap, Users, X } from 'lucide-react'
 import { 
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, RadialBarChart, RadialBar,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart 
@@ -39,10 +39,22 @@ export default function Dashboard() {
   const [filterWorkItem, setFilterWorkItem] = useState('ALL')
   const [filterDateRange, setFilterDateRange] = useState(30) // Last 30 days
   const [wings, setWings] = useState([])
+  
+  // Modal states for interactive cards
+  const [showDetailModal, setShowDetailModal] = useState(false)
+  const [modalData, setModalData] = useState(null)
+  const [modalTitle, setModalTitle] = useState('')
 
   useEffect(() => {
     loadDashboardData()
   }, [])
+  
+  // Reload data when filters change
+  useEffect(() => {
+    if (!loading) {
+      loadFilteredData()
+    }
+  }, [filterWing, filterWorkItem, filterDateRange])
 
   const loadDashboardData = async () => {
     try {
@@ -189,17 +201,49 @@ export default function Dashboard() {
     }
   }
 
+  const loadFilteredData = async () => {
+    try {
+      // Reload timeline, top floors with current filters
+      await loadCompletionTimeline()
+      await loadTopPerformingFloors()
+    } catch (error) {
+      console.error('Error loading filtered data:', error)
+    }
+  }
+
   const loadCompletionTimeline = async () => {
     try {
       const daysAgo = filterDateRange
       const startDate = new Date()
       startDate.setDate(startDate.getDate() - daysAgo)
       
-      const { data } = await supabase
+      let query = supabase
         .from('progress_entries')
-        .select('entry_date, quantity_completed')
+        .select('entry_date, quantity_completed, flat_id, work_item_id, flats!inner(floor_id, floors!inner(wing_id, wings(code)))')
         .gte('entry_date', startDate.toISOString().split('T')[0])
-        .order('entry_date')
+      
+      // Apply wing filter
+      if (filterWing !== 'ALL') {
+        query = query.eq('flats.floors.wings.code', filterWing)
+      }
+      
+      // Apply work item filter
+      if (filterWorkItem !== 'ALL') {
+        const workItem = workItemsProgress.find(w => w.name === filterWorkItem)
+        if (workItem) {
+          const { data: wiData } = await supabase
+            .from('work_items')
+            .select('id')
+            .eq('code', workItem.name)
+            .single()
+          if (wiData) {
+            query = query.eq('work_item_id', wiData.id)
+          }
+        }
+      }
+      
+      query = query.order('entry_date')
+      const { data } = await query
 
       // Group by date
       const grouped = {}
@@ -629,6 +673,16 @@ export default function Dashboard() {
             value={overallStats.totalFlats}
             color="blue"
             delay={0.5}
+            onClick={() => {
+              setModalTitle('Total Flats Breakdown')
+              setModalData({
+                'Total Flats': overallStats.totalFlats,
+                'In Progress': overallStats.inProgressFlats,
+                'Not Started': overallStats.totalFlats - overallStats.inProgressFlats,
+                'Completion Rate': `${Math.round((overallStats.inProgressFlats / overallStats.totalFlats) * 100)}%`
+              })
+              setShowDetailModal(true)
+            }}
           />
           <StatCard
             icon={Activity}
@@ -637,6 +691,16 @@ export default function Dashboard() {
             subtitle={`${overallStats.totalEntries} entries`}
             color="amber"
             delay={0.6}
+            onClick={() => {
+              setModalTitle('Activity Details')
+              setModalData({
+                'Flats in Progress': overallStats.inProgressFlats,
+                'Total Entries': overallStats.totalEntries,
+                'Avg Entries per Flat': Math.round(overallStats.totalEntries / overallStats.inProgressFlats * 10) / 10,
+                'Completion Rate': `${overallStats.overallCompletion}%`
+              })
+              setShowDetailModal(true)
+            }}
           />
           <StatCard
             icon={TrendingUp}
@@ -645,6 +709,17 @@ export default function Dashboard() {
             progress={overallStats.overallCompletion}
             color="green"
             delay={0.2}
+            onClick={() => {
+              setModalTitle('Progress Insights')
+              setModalData({
+                'Overall Completion': `${overallStats.overallCompletion}%`,
+                'Remaining': `${100 - overallStats.overallCompletion}%`,
+                'Work Items > 75%': workItemsProgress.filter(i => i.percentage >= 75).length,
+                'Work Items < 50%': workItemsProgress.filter(i => i.percentage < 50).length,
+                'Total Quantity Done': workItemsProgress.reduce((sum, i) => sum + i.completed, 0)
+              })
+              setShowDetailModal(true)
+            }}
           />
           <StatCard
             icon={CheckCircle2}
@@ -653,6 +728,18 @@ export default function Dashboard() {
             subtitle="Active items"
             color="purple"
             delay={0.3}
+            onClick={() => {
+              const avgCompletion = workItemsProgress.reduce((sum, i) => sum + i.percentage, 0) / workItemsProgress.length
+              setModalTitle('Work Items Summary')
+              setModalData({
+                'Total Work Items': workItemsProgress.length,
+                'Average Completion': `${Math.round(avgCompletion)}%`,
+                'Completed (100%)': workItemsProgress.filter(i => i.percentage === 100).length,
+                'In Progress (1-99%)': workItemsProgress.filter(i => i.percentage > 0 && i.percentage < 100).length,
+                'Not Started (0%)': workItemsProgress.filter(i => i.percentage === 0).length
+              })
+              setShowDetailModal(true)
+            }}
           />
         </div>
 
@@ -868,6 +955,14 @@ export default function Dashboard() {
           </div>
         </ChartCard>
       </div>
+
+      {/* Detail Modal */}
+      <DetailModal
+        show={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        title={modalTitle}
+        data={modalData}
+      />
     </div>
   )
 }
@@ -892,7 +987,7 @@ function LoadingScreen() {
   )
 }
 
-function StatCard({ icon: Icon, label, value, subtitle, color, progress, delay }) {
+function StatCard({ icon: Icon, label, value, subtitle, color, progress, delay, onClick }) {
   const colorClasses = {
     blue: 'from-blue-100 to-blue-200 dark:from-blue-900/30 dark:to-blue-800/30',
     amber: 'from-amber-100 to-amber-200 dark:from-amber-900/30 dark:to-amber-800/30',
@@ -913,7 +1008,8 @@ function StatCard({ icon: Icon, label, value, subtitle, color, progress, delay }
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.5 }}
       whileHover={{ scale: 1.02, y: -4 }}
-      className="bg-white dark:bg-dark-card rounded-2xl shadow-soft dark:shadow-none border border-neutral-100 dark:border-dark-border p-6 transition-all"
+      onClick={onClick}
+      className={`bg-white dark:bg-dark-card rounded-2xl shadow-soft dark:shadow-none border border-neutral-100 dark:border-dark-border p-6 transition-all ${onClick ? 'cursor-pointer hover:border-primary-500 dark:hover:border-primary-500' : ''}`}
     >
       <div className="flex items-center justify-between">
         <div className="flex-1">
@@ -1042,5 +1138,38 @@ function RecentEntry({ entry, delay }) {
         </p>
       </div>
     </motion.div>
+  )
+}
+
+function DetailModal({ show, onClose, title, data }) {
+  if (!show) return null
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white dark:bg-dark-card rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6"
+      >
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-neutral-800 dark:text-dark-text">{title}</h2>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-neutral-100 dark:hover:bg-dark-hover rounded-lg transition-colors"
+          >
+            <X size={24} className="text-neutral-600 dark:text-dark-muted" />
+          </button>
+        </div>
+        <div className="space-y-4">
+          {data && typeof data === 'object' && Object.entries(data).map(([key, value]) => (
+            <div key={key} className="flex justify-between items-center p-3 bg-neutral-50 dark:bg-dark-hover rounded-lg">
+              <span className="font-medium text-neutral-700 dark:text-dark-text capitalize">{key.replace(/_/g, ' ')}</span>
+              <span className="text-neutral-900 dark:text-white font-bold">{value}</span>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+    </div>
   )
 }
