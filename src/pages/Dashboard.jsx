@@ -529,64 +529,76 @@ export default function Dashboard() {
         .from('flat_images')
         .select('flat_id')
       
-      // Create Wing-Floor Summary Table
+      // Create Work Item-Wise Summary Table
       doc.addPage()
       doc.setFontSize(16)
-      doc.text('Wing & Floor Completion Summary', 14, 20)
+      doc.text('Work Item-Wise Completion Summary', 14, 20)
       
-      // Group flats by wing and floor
-      const wingFloorMap = {}
-      for (const flat of sortedFlats) {
-        const wingCode = flat.floors?.wings?.code || 'Unknown'
-        const floorNumber = flat.floors?.floor_number || 0
-        const key = `${wingCode}-${floorNumber}`
+      // Build work item summary
+      const workItemSummaryData = []
+      
+      for (const workItem of allWorkItems || []) {
+        // Group by wing and floor
+        const wingFloorMap = {}
         
-        if (!wingFloorMap[key]) {
-          wingFloorMap[key] = {
-            wing: wingCode,
-            floor: floorNumber,
-            completed: [],
-            pending: []
+        for (const flat of sortedFlats) {
+          const wingCode = flat.floors?.wings?.code || 'Unknown'
+          const floorNumber = flat.floors?.floor_number || 0
+          const key = `${wingCode}-${floorNumber}`
+          
+          if (!wingFloorMap[key]) {
+            wingFloorMap[key] = {
+              wing: wingCode,
+              floor: floorNumber,
+              completed: [],
+              pending: []
+            }
+          }
+          
+          // Check if this work item is completed for this flat
+          const progress = (allProgress || []).find(
+            p => p.flat_id === flat.id && p.work_item_id === workItem.id
+          )
+          
+          if (progress && progress.quantity_completed > 0) {
+            wingFloorMap[key].completed.push(flat.flat_number)
+          } else {
+            wingFloorMap[key].pending.push(flat.flat_number)
           }
         }
         
-        // Check if flat has any progress
-        const hasProgress = (allProgress || []).some(p => p.flat_id === flat.id)
+        // Convert to sorted array
+        const sortedWingFloors = Object.values(wingFloorMap).sort((a, b) => {
+          const wingCompare = a.wing.localeCompare(b.wing)
+          if (wingCompare !== 0) return wingCompare
+          return a.floor - b.floor
+        })
         
-        if (hasProgress) {
-          wingFloorMap[key].completed.push(flat.flat_number)
-        } else {
-          wingFloorMap[key].pending.push(flat.flat_number)
-        }
+        // Add rows for this work item
+        sortedWingFloors.forEach((item, index) => {
+          workItemSummaryData.push([
+            index === 0 ? `${workItem.code} - ${workItem.name}` : '',
+            `Wing ${item.wing}`,
+            `Floor ${item.floor}`,
+            item.completed.length > 0 ? item.completed.sort((a, b) => a - b).join(', ') : '-',
+            item.pending.length > 0 ? item.pending.sort((a, b) => a - b).join(', ') : '-'
+          ])
+        })
       }
-      
-      // Convert to sorted array
-      const wingFloorSummary = Object.values(wingFloorMap).sort((a, b) => {
-        const wingCompare = a.wing.localeCompare(b.wing)
-        if (wingCompare !== 0) return wingCompare
-        return a.floor - b.floor
-      })
-      
-      // Create table data
-      const summaryTableData = wingFloorSummary.map(item => [
-        `Wing ${item.wing}`,
-        `Floor ${item.floor}`,
-        item.completed.length > 0 ? item.completed.sort((a, b) => a - b).join(', ') : '-',
-        item.pending.length > 0 ? item.pending.sort((a, b) => a - b).join(', ') : '-'
-      ])
       
       autoTable(doc, {
         startY: 28,
-        head: [['Wing', 'Floor', 'Completed Flats', 'Pending Flats']],
-        body: summaryTableData,
+        head: [['Work Item', 'Wing', 'Floor', 'Completed Flats', 'Pending Flats']],
+        body: workItemSummaryData,
         theme: 'grid',
-        styles: { fontSize: 9, cellPadding: 3 },
-        headStyles: { fillColor: [34, 197, 94], fontSize: 10, fontStyle: 'bold' },
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [34, 197, 94], fontSize: 9, fontStyle: 'bold' },
         columnStyles: {
-          0: { cellWidth: 25 },
-          1: { cellWidth: 25 },
-          2: { cellWidth: 65 },
-          3: { cellWidth: 65 }
+          0: { cellWidth: 40 },
+          1: { cellWidth: 20 },
+          2: { cellWidth: 20 },
+          3: { cellWidth: 50 },
+          4: { cellWidth: 50 }
         }
       })
       
