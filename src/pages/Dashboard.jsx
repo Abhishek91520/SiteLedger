@@ -420,29 +420,39 @@ export default function Dashboard() {
 
   const exportToPDF = async () => {
     try {
+      setLoading(true)
       const doc = new jsPDF('p', 'mm', 'a4')
       const pageWidth = doc.internal.pageSize.getWidth()
       
-      // Title
+      // Title Page
       doc.setFontSize(20)
       doc.text(project?.name || 'Project Dashboard', pageWidth / 2, 20, { align: 'center' })
-      doc.setFontSize(12)
-      doc.text(`Generated: ${format(new Date(), 'PPP')}`, pageWidth / 2, 28, { align: 'center' })
-      
-      // Overall Stats
       doc.setFontSize(14)
-      doc.text('Overall Statistics', 14, 40)
+      doc.text('Comprehensive Flat-Wise Progress Report', pageWidth / 2, 30, { align: 'center' })
+      doc.setFontSize(12)
+      doc.text(`Generated: ${format(new Date(), 'PPP')}`, pageWidth / 2, 38, { align: 'center' })
+      
+      // Overall Summary
+      doc.setFontSize(14)
+      doc.text('Project Summary', 14, 50)
       const statsData = [
         ['Total Flats', overallStats.totalFlats],
-        ['In Progress', overallStats.inProgressFlats],
+        ['Flats In Progress', overallStats.inProgressFlats],
         ['Overall Completion', `${overallStats.overallCompletion}%`],
-        ['Total Entries', overallStats.totalEntries]
+        ['Total Progress Entries', overallStats.totalEntries]
       ]
-      autoTable(doc, { startY: 45, head: [['Metric', 'Value']], body: statsData, theme: 'grid' })
+      autoTable(doc, { 
+        startY: 55, 
+        head: [['Metric', 'Value']], 
+        body: statsData, 
+        theme: 'grid',
+        headStyles: { fillColor: [59, 130, 246] }
+      })
       
-      // Work Items Progress
-      const finalY = doc.lastAutoTable?.finalY || 45
-      doc.text('Work Items Progress', 14, finalY + 15)
+      // Work Items Summary
+      let finalY = doc.lastAutoTable?.finalY || 55
+      doc.setFontSize(14)
+      doc.text('Work Items Summary', 14, finalY + 10)
       const workItemsData = workItemsProgress.map(item => [
         item.name,
         item.fullName,
@@ -450,16 +460,150 @@ export default function Dashboard() {
         `${item.percentage}%`
       ])
       autoTable(doc, {
-        startY: finalY + 20,
+        startY: finalY + 15,
         head: [['Code', 'Name', 'Progress', 'Completion']],
         body: workItemsData,
-        theme: 'striped'
+        theme: 'striped',
+        headStyles: { fillColor: [59, 130, 246] }
       })
       
-      doc.save(`${project?.name || 'Dashboard'}_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      // Fetch all flats with complete details
+      const { data: allFlats } = await supabase
+        .from('flats')
+        .select(`
+          id,
+          flat_number,
+          bhk_type,
+          is_refuge,
+          is_joint_refuge,
+          floors(floor_number, wings(code, name))
+        `)
+        .order('floors.wings.code')
+        .order('floors.floor_number')
+        .order('flat_number')
+      
+      // Fetch all work items
+      const { data: allWorkItems } = await supabase
+        .from('work_items')
+        .select('id, code, name')
+        .eq('is_active', true)
+        .order('code')
+      
+      // Fetch all progress entries
+      const { data: allProgress } = await supabase
+        .from('progress_entries')
+        .select('flat_id, work_item_id, quantity_completed, entry_date')
+      
+      // Fetch all detail progress
+      const { data: allDetailProgress } = await supabase
+        .from('work_item_details_progress')
+        .select('flat_id, work_item_id, detail_config_id, is_completed, work_item_detail_configs(name)')
+      
+      // Fetch notes and images count
+      const { data: allNotes } = await supabase
+        .from('flat_notes')
+        .select('flat_id')
+      
+      const { data: allImages } = await supabase
+        .from('flat_images')
+        .select('flat_id')
+      
+      // Start detailed flat-wise report
+      doc.addPage()
+      doc.setFontSize(16)
+      doc.text('Detailed Flat-Wise Progress Report', 14, 20)
+      
+      let currentY = 30
+      
+      for (const flat of allFlats || []) {
+        // Check if we need a new page
+        if (currentY > 250) {
+          doc.addPage()
+          currentY = 20
+        }
+        
+        // Flat Header
+        doc.setFontSize(12)
+        doc.setFont(undefined, 'bold')
+        const flatInfo = `Wing ${flat.floors?.wings?.code} - Floor ${flat.floors?.floor_number} - Flat ${flat.flat_number}`
+        doc.text(flatInfo, 14, currentY)
+        currentY += 7
+        
+        doc.setFontSize(10)
+        doc.setFont(undefined, 'normal')
+        const flatDetails = `BHK: ${flat.bhk_type || 'N/A'} | Type: ${flat.is_joint_refuge ? 'Joint Refuge' : flat.is_refuge ? 'Refuge' : 'Normal'}`
+        doc.text(flatDetails, 14, currentY)
+        currentY += 3
+        
+        // Notes and Images count
+        const notesCount = (allNotes || []).filter(n => n.flat_id === flat.id).length
+        const imagesCount = (allImages || []).filter(i => i.flat_id === flat.id).length
+        const docsInfo = `Documentation: ${notesCount} Notes, ${imagesCount} Images`
+        doc.text(docsInfo, 14, currentY)
+        currentY += 8
+        
+        // Work items for this flat
+        const flatWorkItemsData = []
+        
+        for (const workItem of allWorkItems || []) {
+          const progress = (allProgress || []).find(
+            p => p.flat_id === flat.id && p.work_item_id === workItem.id
+          )
+          
+          const detailProgress = (allDetailProgress || []).filter(
+            d => d.flat_id === flat.id && d.work_item_id === workItem.id
+          )
+          
+          const completedDetails = detailProgress.filter(d => d.is_completed).length
+          const totalDetails = detailProgress.length
+          
+          const status = progress?.quantity_completed > 0 ? 'Completed' : 'Pending'
+          const detailsInfo = totalDetails > 0 
+            ? `${completedDetails}/${totalDetails} checks` 
+            : '-'
+          const lastUpdate = progress?.entry_date 
+            ? format(new Date(progress.entry_date), 'dd/MM/yyyy')
+            : '-'
+          
+          flatWorkItemsData.push([
+            workItem.code,
+            workItem.name,
+            status,
+            detailsInfo,
+            lastUpdate
+          ])
+        }
+        
+        // Add work items table for this flat
+        autoTable(doc, {
+          startY: currentY,
+          head: [['Code', 'Work Item', 'Status', 'Details', 'Last Update']],
+          body: flatWorkItemsData,
+          theme: 'grid',
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [99, 102, 241], fontSize: 9 },
+          columnStyles: {
+            0: { cellWidth: 15 },
+            1: { cellWidth: 60 },
+            2: { cellWidth: 25 },
+            3: { cellWidth: 35 },
+            4: { cellWidth: 30 }
+          },
+          didDrawPage: (data) => {
+            currentY = data.cursor.y + 2
+          }
+        })
+        
+        currentY = doc.lastAutoTable?.finalY + 10 || currentY + 10
+      }
+      
+      // Save PDF
+      doc.save(`${project?.name || 'Project'}_Comprehensive_Report_${format(new Date(), 'yyyy-MM-dd')}.pdf`)
+      setLoading(false)
     } catch (error) {
       console.error('Error exporting PDF:', error)
-      alert('Failed to export PDF')
+      alert('Failed to export PDF: ' + error.message)
+      setLoading(false)
     }
   }
 
