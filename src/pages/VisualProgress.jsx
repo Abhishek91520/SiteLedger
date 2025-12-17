@@ -318,16 +318,29 @@ export default function VisualProgress() {
 
             const { data: entries } = await query
 
-            // Load notes and images count for this flat
-            const { count: notesCount } = await supabase
-              .from('flat_notes')
-              .select('*', { count: 'exact', head: true })
-              .eq('flat_id', flat.id)
+            // Load notes and images count for this flat - filtered by selected work item
+            let notesCount = 0
+            let imagesCount = 0
+            
+            if (selectedWorkItem !== 'ALL') {
+              const selectedItem = workItems.find(item => item.code === selectedWorkItem)
+              if (selectedItem) {
+                const { count: notes } = await supabase
+                  .from('flat_notes')
+                  .select('*', { count: 'exact', head: true })
+                  .eq('flat_id', flat.id)
+                  .eq('work_item_id', selectedItem.id)
 
-            const { count: imagesCount } = await supabase
-              .from('flat_images')
-              .select('*', { count: 'exact', head: true })
-              .eq('flat_id', flat.id)
+                const { count: images } = await supabase
+                  .from('flat_images')
+                  .select('*', { count: 'exact', head: true })
+                  .eq('flat_id', flat.id)
+                  .eq('work_item_id', selectedItem.id)
+                
+                notesCount = notes || 0
+                imagesCount = images || 0
+              }
+            }
 
             // Helper function to get applicable configs for a flat
             const getApplicableConfigs = async (workItemCode, bhkType, isRefuge, isJointRefuge) => {
