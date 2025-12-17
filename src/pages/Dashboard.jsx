@@ -924,43 +924,6 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Wing Performance Heat Map */}
-        <ChartCard title="Wing Performance Matrix" delay={0.35}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {wingProgress.map((wing, index) => (
-              <motion.div
-                key={wing.name}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.4 + index * 0.1 }}
-                className={`p-6 rounded-xl text-center shadow-lg ${
-                  wing.completion >= 75
-                    ? 'bg-gradient-to-br from-green-500 to-green-600 dark:from-green-600 dark:to-green-700'
-                    : wing.completion >= 50
-                    ? 'bg-gradient-to-br from-amber-500 to-amber-600 dark:from-amber-600 dark:to-amber-700'
-                    : wing.completion >= 25
-                    ? 'bg-gradient-to-br from-orange-500 to-orange-600 dark:from-orange-600 dark:to-orange-700'
-                    : 'bg-gradient-to-br from-red-500 to-red-600 dark:from-red-600 dark:to-red-700'
-                }`}
-              >
-                <h3 className="text-white font-bold text-2xl mb-2">{wing.name}</h3>
-                <div className="text-5xl font-black text-white mb-3">{wing.completion}%</div>
-                <p className="text-white/90 text-sm font-semibold mb-2">
-                  {wing.withProgress} / {wing.totalFlats} flats active
-                </p>
-                <div className="mt-4 h-3 bg-white/30 rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${wing.completion}%` }}
-                    transition={{ delay: 0.5 + index * 0.1, duration: 1 }}
-                    className="h-full bg-white rounded-full shadow-inner"
-                  />
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </ChartCard>
-
         {/* Charts Row 1 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Work Items Progress Chart */}
