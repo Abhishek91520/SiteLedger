@@ -298,7 +298,8 @@ export default function EnhancedFlatWorkItem({
         .eq('work_item_id', workItem.id)
         .maybeSingle()
       
-      if (completedCount > 0) {
+      // Only save if there are checks completed AND total checks > 0
+      if (completedCount > 0 && totalChecks > 0) {
         // Calculate base quantity per flat
         let baseQuantity = 1.0  // Default: 1 nos point per flat
         
