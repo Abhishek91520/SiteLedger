@@ -93,6 +93,44 @@ function FlatTile({ flat, position, onFlatClick }) {
       <Box args={[0.35, 0.7, 0.05]} position={[0, -0.55, 0.92]}>
         <meshStandardMaterial color="#8B4513" metalness={0.4} roughness={0.6} />
       </Box>
+      
+      {/* Notes indicator badge - bottom left */}
+      {flat.notes_count > 0 && (
+        <>
+          <Box args={[0.4, 0.25, 0.05]} position={[-0.65, -0.8, 0.93]}>
+            <meshStandardMaterial color="#10B981" metalness={0.5} roughness={0.3} emissive="#10B981" emissiveIntensity={0.4} />
+          </Box>
+          <Text
+            position={[-0.65, -0.8, 0.98]}
+            fontSize={0.15}
+            color="white"
+            anchorX="center"
+            anchorY="middle"
+            fontWeight={900}
+          >
+            {flat.notes_count}N
+          </Text>
+        </>
+      )}
+      
+      {/* Images indicator badge - bottom right */}
+      {flat.images_count > 0 && (
+        <>
+          <Box args={[0.4, 0.25, 0.05]} position={[0.65, -0.8, 0.93]}>
+            <meshStandardMaterial color="#3B82F6" metalness={0.5} roughness={0.3} emissive="#3B82F6" emissiveIntensity={0.4} />
+          </Box>
+          <Text
+            position={[0.65, -0.8, 0.98]}
+            fontSize={0.15}
+            color="white"
+            anchorX="center"
+            anchorY="middle"
+            fontWeight={900}
+          >
+            {flat.images_count}I
+          </Text>
+        </>
+      )}
     </group>
   )
 }
@@ -280,6 +318,17 @@ export default function VisualProgress() {
 
             const { data: entries } = await query
 
+            // Load notes and images count for this flat
+            const { count: notesCount } = await supabase
+              .from('flat_notes')
+              .select('*', { count: 'exact', head: true })
+              .eq('flat_id', flat.id)
+
+            const { count: imagesCount } = await supabase
+              .from('flat_images')
+              .select('*', { count: 'exact', head: true })
+              .eq('flat_id', flat.id)
+
             // Helper function to get applicable configs for a flat
             const getApplicableConfigs = async (workItemCode, bhkType, isRefuge, isJointRefuge) => {
               const { data: configs } = await supabase
@@ -393,7 +442,9 @@ export default function VisualProgress() {
             return {
               ...flat,
               completion_percentage: Math.min(100, Math.round(completion_percentage)),
-              work_items_progress: [] // Will be loaded when flat is clicked
+              work_items_progress: [], // Will be loaded when flat is clicked
+              notes_count: notesCount || 0,
+              images_count: imagesCount || 0
             }
           }))
 
