@@ -744,7 +744,27 @@ export default function VisualProgress() {
                           src={image.image_url}
                           alt={image.caption || 'Flat image'}
                           className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
-                          onClick={() => window.open(image.image_url, '_blank')}
+                          onClick={() => {
+                            // Create a new window with the base64 image
+                            const newWindow = window.open('', '_blank')
+                            if (newWindow) {
+                              newWindow.document.write(`
+                                <html>
+                                  <head>
+                                    <title>${image.caption || 'Image'}</title>
+                                    <style>
+                                      body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; }
+                                      img { max-width: 100%; max-height: 100vh; object-fit: contain; }
+                                    </style>
+                                  </head>
+                                  <body>
+                                    <img src="${image.image_url}" alt="${image.caption || 'Image'}" />
+                                  </body>
+                                </html>
+                              `)
+                              newWindow.document.close()
+                            }
+                          }}
                         />
                         {image.caption && (
                           <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1 px-2">

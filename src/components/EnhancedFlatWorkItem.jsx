@@ -101,7 +101,7 @@ export default function EnhancedFlatWorkItem({
         .eq('work_item_id', workItem.id)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single()
+        .maybeSingle()
 
       if (data) setNote(data.note_text)
     } catch (error) {
@@ -259,7 +259,7 @@ export default function EnhancedFlatWorkItem({
           .select('id')
           .eq('flat_id', flat.id)
           .eq('work_item_id', workItem.id)
-          .single()
+          .maybeSingle()
 
         if (existingNote.data) {
           await supabase

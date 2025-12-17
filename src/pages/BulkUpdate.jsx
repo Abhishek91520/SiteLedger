@@ -104,26 +104,35 @@ export default function BulkUpdate() {
   }
 
   const loadFlatMetadata = async () => {
-    if (flats.length === 0) return
+    if (flats.length === 0 || !selectedWorkItem) return
 
     try {
-      // Load notes counts
+      // Get the selected work item ID
+      const workItemId = workItems.find(w => w.code === selectedWorkItem)?.id
+      if (!workItemId) {
+        setFlatMetadata({})
+        return
+      }
+
+      // Load notes counts for this work item only
       const { data: notesData, error: notesError } = await supabase
         .from('flat_notes')
         .select('flat_id')
         .in('flat_id', flats.map(f => f.id))
+        .eq('work_item_id', workItemId)
 
       if (notesError) throw notesError
 
-      // Load images counts
+      // Load images counts for this work item only
       const { data: imagesData, error: imagesError } = await supabase
         .from('flat_images')
         .select('flat_id')
         .in('flat_id', flats.map(f => f.id))
+        .eq('work_item_id', workItemId)
 
       if (imagesError) throw imagesError
 
-      // Count notes and images per flat
+      // Count notes and images per flat for THIS work item only
       const metadata = {}
       flats.forEach(flat => {
         metadata[flat.id] = {
@@ -545,6 +554,11 @@ export default function BulkUpdate() {
                 onChange={(e) => {
                   setSelectedWorkItem(e.target.value)
                   setSelections({})
+                  // Reset all filters when work item changes
+                  setFilterCompletionStatus('ALL')
+                  setFilterDocumentation('ALL')
+                  setFilterBHK('ALL')
+                  setFilterDetailCheck('ALL')
                 }}
                 disabled={!selectedWing}
                 className="w-full px-4 py-3 bg-white dark:bg-dark-hover border border-neutral-300 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-primary-500 text-neutral-800 dark:text-dark-text disabled:opacity-50"

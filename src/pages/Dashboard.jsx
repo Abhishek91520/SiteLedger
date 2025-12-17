@@ -1015,65 +1015,6 @@ export default function Dashboard() {
           </ChartCard>
         </div>
 
-        {/* Pending Work Concentration - Where is work pending? */}
-        <ChartCard title="Pending Work Concentration by Wing & Floor" delay={0.6}>
-          <div className="space-y-3">
-            {wingProgress.map((wing, idx) => (
-              <div key={idx} className="p-4 bg-neutral-50 dark:bg-dark-hover rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-bold text-neutral-800 dark:text-dark-text">{wing.name}</h4>
-                  <span className="text-sm text-neutral-600 dark:text-dark-muted">
-                    {wing.pending} flats pending
-                  </span>
-                </div>
-                <div className="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-2">
-                  <div 
-                    className="bg-orange-500 h-2 rounded-full transition-all duration-500"
-                    style={{ width: `${(wing.pending / wing.totalFlats) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </ChartCard>
-
-        {/* Work Items - Attention List */}
-        <ChartCard title="Work Items Requiring Attention" delay={0.65}>
-          <div className="space-y-2">
-            {workItemsProgress
-              .filter(item => item.percentage < 100 && item.percentage > 0)
-              .sort((a, b) => a.percentage - b.percentage)
-              .slice(0, 5)
-              .map((item, idx) => (
-                <div key={idx} className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border-l-4 border-yellow-500">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-neutral-800 dark:text-dark-text">
-                        {item.name} - {item.fullName}
-                      </span>
-                      <p className="text-sm text-neutral-600 dark:text-dark-muted mt-1">
-                        {item.remaining} units remaining ({item.percentage}% complete)
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
-                        {item.remaining}
-                      </div>
-                      <div className="text-xs text-neutral-500">pending</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            {workItemsProgress.filter(item => item.percentage === 0).length > 0 && (
-              <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border-l-4 border-red-500">
-                <p className="text-sm font-bold text-red-700 dark:text-red-300">
-                  ⚠️ {workItemsProgress.filter(item => item.percentage === 0).length} work items not started yet
-                </p>
-              </div>
-            )}
-          </div>
-        </ChartCard>
-
         {/* Work Items Detailed Progress */}
         <ChartCard title="Detailed Work Item Status" delay={0.75}>
           <div className="space-y-4">
