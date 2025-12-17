@@ -280,21 +280,71 @@ export default function VisualProgress() {
 
             const { data: entries } = await query
 
+            // Helper function to get applicable configs for a flat
+            const getApplicableConfigs = async (workItemCode, bhkType, isRefuge, isJointRefuge) => {
+              const { data: configs } = await supabase
+                .from('work_item_detail_config')
+                .select('id')
+                .eq('work_item_code', workItemCode)
+                .eq('is_active', true)
+
+              if (!configs) return []
+
+              // Filter by BHK type if required
+              let filtered = configs.filter(config => {
+                if (!config.requires_bhk_type) return true
+                return config.requires_bhk_type === bhkType
+              })
+
+              // Special handling for Work Item D (Bathrooms)
+              if (workItemCode === 'D') {
+                // Refugee flats (non-joint) only have common bathroom
+                if (isRefuge === true && isJointRefuge !== true) {
+                  // For refuge flats, we need to get the Common Bathroom config
+                  const { data: allConfigs } = await supabase
+                    .from('work_item_detail_config')
+                    .select('*')
+                    .eq('work_item_code', 'D')
+                    .eq('is_active', true)
+                  
+                  filtered = allConfigs.filter(c => c.detail_name === 'Common Bathroom')
+                }
+              }
+
+              return filtered.map(c => c.id)
+            }
+
             // Calculate completion percentage based on detail checks
             let completion_percentage = 0
 
             if (selectedWorkItem === 'ALL') {
               // All work items - average completion across all work items
               const workItemCompletions = await Promise.all(workItems.map(async (item) => {
+                // Get applicable config IDs for this flat
+                const applicableConfigIds = await getApplicableConfigs(
+                  item.code, 
+                  flat.bhk_type, 
+                  flat.is_refuge, 
+                  flat.is_joint_refuge
+                )
+
+                if (applicableConfigIds.length === 0) {
+                  // No configs applicable, check progress_entries fallback
+                  const itemEntry = (entries || []).find(e => e.work_item_id === item.id)
+                  return itemEntry && itemEntry.quantity_completed > 0 ? 100 : 0
+                }
+
+                // Get detail checks ONLY for applicable configs
                 const { data: detailChecks } = await supabase
                   .from('work_item_details_progress')
                   .select('is_completed')
                   .eq('flat_id', flat.id)
                   .eq('work_item_id', item.id)
+                  .in('detail_config_id', applicableConfigIds)
                 
                 if (detailChecks && detailChecks.length > 0) {
                   const completed = detailChecks.filter(c => c.is_completed).length
-                  return (completed / detailChecks.length) * 100
+                  return (completed / applicableConfigIds.length) * 100
                 }
                 
                 // Fallback: check progress_entries
@@ -307,19 +357,35 @@ export default function VisualProgress() {
               // Specific work item - check detail checks for this work item
               const selectedItem = workItems.find(item => item.code === selectedWorkItem)
               if (selectedItem) {
-                const { data: detailChecks } = await supabase
-                  .from('work_item_details_progress')
-                  .select('is_completed')
-                  .eq('flat_id', flat.id)
-                  .eq('work_item_id', selectedItem.id)
-                
-                if (detailChecks && detailChecks.length > 0) {
-                  const completed = detailChecks.filter(c => c.is_completed).length
-                  completion_percentage = (completed / detailChecks.length) * 100
-                } else {
-                  // Fallback: check progress_entries
+                // Get applicable config IDs for this flat
+                const applicableConfigIds = await getApplicableConfigs(
+                  selectedItem.code, 
+                  flat.bhk_type, 
+                  flat.is_refuge, 
+                  flat.is_joint_refuge
+                )
+
+                if (applicableConfigIds.length === 0) {
+                  // No configs applicable, check progress_entries fallback
                   const hasEntry = (entries || []).some(e => e.work_item_id === selectedItem.id && e.quantity_completed > 0)
                   completion_percentage = hasEntry ? 100 : 0
+                } else {
+                  // Get detail checks ONLY for applicable configs
+                  const { data: detailChecks } = await supabase
+                    .from('work_item_details_progress')
+                    .select('is_completed')
+                    .eq('flat_id', flat.id)
+                    .eq('work_item_id', selectedItem.id)
+                    .in('detail_config_id', applicableConfigIds)
+                  
+                  if (detailChecks && detailChecks.length > 0) {
+                    const completed = detailChecks.filter(c => c.is_completed).length
+                    completion_percentage = (completed / applicableConfigIds.length) * 100
+                  } else {
+                    // Fallback: check progress_entries
+                    const hasEntry = (entries || []).some(e => e.work_item_id === selectedItem.id && e.quantity_completed > 0)
+                    completion_percentage = hasEntry ? 100 : 0
+                  }
                 }
               }
             }
@@ -357,6 +423,33 @@ export default function VisualProgress() {
       // Use flat.id (not flat.flat_id)
       const flatId = flat.id
       
+      // Helper function to get applicable configs for a flat
+      const getApplicableConfigsForFlat = async (workItemCode) => {
+        const { data: configs } = await supabase
+          .from('work_item_detail_config')
+          .select('*')
+          .eq('work_item_code', workItemCode)
+          .eq('is_active', true)
+
+        if (!configs) return []
+
+        // Filter by BHK type if required
+        let filtered = configs.filter(config => {
+          if (!config.requires_bhk_type) return true
+          return config.requires_bhk_type === flat.bhk_type
+        })
+
+        // Special handling for Work Item D (Bathrooms)
+        if (workItemCode === 'D') {
+          // Refugee flats (non-joint) only have common bathroom
+          if (flat.is_refuge === true && flat.is_joint_refuge !== true) {
+            filtered = configs.filter(c => c.detail_name === 'Common Bathroom')
+          }
+        }
+
+        return filtered
+      }
+      
       // Load enhanced work item progress with detailed checks
       const workItemsProgress = await Promise.all(workItems.map(async (workItem) => {
         const { data: itemEntries } = await supabase
@@ -365,25 +458,34 @@ export default function VisualProgress() {
           .eq('flat_id', flatId)
           .eq('work_item_id', workItem.id)
 
-        // Load detailed checks from work_item_details_progress
-        const { data: detailChecks } = await supabase
-          .from('work_item_details_progress')
-          .select(`
-            *,
-            detail_config:work_item_detail_config(*)
-          `)
-          .eq('flat_id', flatId)
-          .eq('work_item_id', workItem.id)
+        // Get applicable configs for this flat
+        const applicableConfigs = await getApplicableConfigsForFlat(workItem.code)
+        const applicableConfigIds = applicableConfigs.map(c => c.id)
+
+        // Load detailed checks ONLY for applicable configs
+        let detailChecks = []
+        if (applicableConfigIds.length > 0) {
+          const { data } = await supabase
+            .from('work_item_details_progress')
+            .select(`
+              *,
+              detail_config:work_item_detail_config(*)
+            `)
+            .eq('flat_id', flatId)
+            .eq('work_item_id', workItem.id)
+            .in('detail_config_id', applicableConfigIds)
+          
+          detailChecks = data || []
+        }
 
         // Calculate completion based on detailed checks if available
         let percentage = 0
         let completedChecks = 0
-        let totalChecks = 0
+        let totalChecks = applicableConfigs.length
 
-        if (detailChecks && detailChecks.length > 0) {
-          totalChecks = detailChecks.length
+        if (totalChecks > 0) {
           completedChecks = detailChecks.filter(c => c.is_completed).length
-          percentage = totalChecks > 0 ? Math.round((completedChecks / totalChecks) * 100) : 0
+          percentage = Math.round((completedChecks / totalChecks) * 100)
         } else {
           // Fallback to old system
           const isCompleted = (itemEntries || []).some(e => e.quantity_completed > 0)
@@ -397,7 +499,7 @@ export default function VisualProgress() {
           work_item_name: workItem.name,
           completed_quantity: completedChecks,
           total_quantity: totalChecks,
-          unit: detailChecks && detailChecks.length > 0 ? 'checks' : 'flat',
+          unit: applicableConfigs.length > 0 ? 'checks' : 'flat',
           completion_percentage: percentage,
           last_updated: itemEntries && itemEntries.length > 0 ? itemEntries[0].entry_date : null,
           detailed_checks: detailChecks || []
