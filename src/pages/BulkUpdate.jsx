@@ -56,6 +56,13 @@ export default function BulkUpdate() {
     }
   }, [selectedWing, selectedWorkItem])
 
+  // Reload metadata when flats or work item changes
+  useEffect(() => {
+    if (flats.length > 0 && selectedWorkItem) {
+      loadFlatMetadata()
+    }
+  }, [flats, selectedWorkItem])
+
   const loadInitialData = async () => {
     try {
       const [wingsRes, workItemsRes] = await Promise.all([
