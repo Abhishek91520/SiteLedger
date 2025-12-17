@@ -237,15 +237,20 @@ export default function BulkUpdate() {
         const percentage = Math.round((completedChecks / totalChecks) * 100)
         
         // Store which specific checks are completed for filtering
+        // IMPORTANT: Only include checks that are applicable to this flat and work item
         const completedCheckIds = progress
-          .filter(p => p.flat_id === flat.id && p.is_completed)
+          .filter(p => 
+            p.flat_id === flat.id && 
+            p.is_completed &&
+            applicableConfigs.some(c => c.id === p.detail_config_id)
+          )
           .map(p => p.detail_config_id)
         
         detailProgressMap[flat.id] = { 
           percentage, 
           completed: completedChecks, 
           total: totalChecks,
-          completedCheckIds // Array of completed detail_config_id's
+          completedCheckIds // Array of completed detail_config_id's for THIS work item only
         }
       })
 

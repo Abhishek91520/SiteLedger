@@ -280,23 +280,47 @@ export default function VisualProgress() {
 
             const { data: entries } = await query
 
-            // Calculate completion percentage
+            // Calculate completion percentage based on detail checks
             let completion_percentage = 0
 
             if (selectedWorkItem === 'ALL') {
-              // All work items - check how many work items are completed for this flat
-              const completedWorkItems = workItems.filter(item => {
-                const itemEntries = (entries || []).filter(e => e.work_item_id === item.id)
-                return itemEntries.length > 0 && itemEntries.some(e => e.quantity_completed > 0)
-              }).length
+              // All work items - average completion across all work items
+              const workItemCompletions = await Promise.all(workItems.map(async (item) => {
+                const { data: detailChecks } = await supabase
+                  .from('work_item_details_progress')
+                  .select('is_completed')
+                  .eq('flat_id', flat.id)
+                  .eq('work_item_id', item.id)
+                
+                if (detailChecks && detailChecks.length > 0) {
+                  const completed = detailChecks.filter(c => c.is_completed).length
+                  return (completed / detailChecks.length) * 100
+                }
+                
+                // Fallback: check progress_entries
+                const itemEntry = (entries || []).find(e => e.work_item_id === item.id)
+                return itemEntry && itemEntry.quantity_completed > 0 ? 100 : 0
+              }))
               
-              completion_percentage = workItems.length > 0 ? (completedWorkItems / workItems.length) * 100 : 0
+              completion_percentage = workItemCompletions.reduce((a, b) => a + b, 0) / workItems.length
             } else {
-              // Specific work item - check if this flat has this work item completed
+              // Specific work item - check detail checks for this work item
               const selectedItem = workItems.find(item => item.code === selectedWorkItem)
               if (selectedItem) {
-                const hasEntry = (entries || []).some(e => e.quantity_completed > 0)
-                completion_percentage = hasEntry ? 100 : 0
+                const { data: detailChecks } = await supabase
+                  .from('work_item_details_progress')
+                  .select('is_completed')
+                  .eq('flat_id', flat.id)
+                  .eq('work_item_id', selectedItem.id)
+                
+                if (detailChecks && detailChecks.length > 0) {
+                  const completed = detailChecks.filter(c => c.is_completed).length
+                  completion_percentage = (completed / detailChecks.length) * 100
+                } else {
+                  // Fallback: check progress_entries
+                  const hasEntry = (entries || []).some(e => e.work_item_id === selectedItem.id && e.quantity_completed > 0)
+                  completion_percentage = hasEntry ? 100 : 0
+                }
               }
             }
 
@@ -380,17 +404,17 @@ export default function VisualProgress() {
         }
       }))
 
-      // Load flat notes
+      // Load flat notes with work item information
       const { data: notes } = await supabase
         .from('flat_notes')
-        .select('*')
+        .select('*, work_items(code, name)')
         .eq('flat_id', flatId)
         .order('created_at', { ascending: false })
 
-      // Load flat images
+      // Load flat images with work item information
       const { data: images } = await supabase
         .from('flat_images')
-        .select('*')
+        .select('*, work_items(code, name)')
         .eq('flat_id', flatId)
         .order('uploaded_at', { ascending: false })
 
@@ -672,15 +696,34 @@ export default function VisualProgress() {
                 <div className="mt-4 md:mt-6">
                   <div className="flex items-center gap-2 mb-3">
                     <StickyNote size={18} className="text-neutral-700 dark:text-dark-text" />
-                    <h4 className="text-base md:text-lg font-bold text-neutral-800 dark:text-dark-text">Notes</h4>
+                    <h4 className="text-base md:text-lg font-bold text-neutral-800 dark:text-dark-text">Notes by Work Item</h4>
                   </div>
-                  <div className="space-y-2">
-                    {selectedFlat.notes.map((note) => (
-                      <div key={note.id} className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
-                        <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">{note.note_text}</p>
-                        <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-2">
-                          {new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </p>
+                  <div className="space-y-4">
+                    {/* Group notes by work item */}
+                    {Object.entries(
+                      selectedFlat.notes.reduce((acc, note) => {
+                        const workItemCode = note.work_items?.code || 'Unknown'
+                        const workItemName = note.work_items?.name || 'Unknown Work Item'
+                        const key = `${workItemCode}-${workItemName}`
+                        if (!acc[key]) acc[key] = { code: workItemCode, name: workItemName, notes: [] }
+                        acc[key].notes.push(note)
+                        return acc
+                      }, {})
+                    ).map(([key, group]) => (
+                      <div key={key} className="border border-neutral-200 dark:border-dark-border rounded-lg p-3">
+                        <h5 className="text-sm font-bold text-primary-600 dark:text-primary-400 mb-2">
+                          {group.code} - {group.name}
+                        </h5>
+                        <div className="space-y-2">
+                          {group.notes.map((note) => (
+                            <div key={note.id} className="p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded border border-yellow-200 dark:border-yellow-800">
+                              <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">{note.note_text}</p>
+                              <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
+                                {new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>

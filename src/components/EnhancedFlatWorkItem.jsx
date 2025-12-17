@@ -278,16 +278,15 @@ export default function EnhancedFlatWorkItem({
         }
       }
 
-      // Update main progress_entries based on completion status
-      const allComplete = detailConfigs.every(config => progress[config.id]?.is_completed)
+      // Calculate quantity based on check completion percentage
       const completedCount = detailConfigs.filter(config => progress[config.id]?.is_completed).length
+      const totalChecks = detailConfigs.length
       
-      console.log('Progress entry logic:', {
+      console.log('Progress calculation:', {
         flat: flat.flat_number,
         workItem: workItem.code,
-        allComplete,
         completedCount,
-        totalConfigs: detailConfigs.length,
+        totalChecks,
         is_joint_refuge: flat.is_joint_refuge
       })
       
@@ -299,31 +298,31 @@ export default function EnhancedFlatWorkItem({
         .eq('work_item_id', workItem.id)
         .maybeSingle()
       
-      console.log('Existing progress entry:', existing ? 'Found' : 'Not found')
-      
-      if (allComplete) {
-        // All checks complete - create/update progress entry
-        // Quantity calculation logic:
-        // - Work Item D (Bathroom): 2 for normal, 1 for refugee, 0.5 for joint refuge
-        // - All other items: 1 nos point per flat
-        let quantity = 1.0  // Default: 1 nos point for all work items
+      if (completedCount > 0) {
+        // Calculate base quantity per flat
+        let baseQuantity = 1.0  // Default: 1 nos point per flat
         
         // Special case for Bathroom (Work Item D)
         if (workItem.code === 'D') {
           if (flat.is_joint_refuge === true) {
-            quantity = 0.5  // Joint refuge bathroom (shared)
-            console.log('Joint refuge bathroom - setting quantity to 0.5')
+            baseQuantity = 0.5  // Joint refuge bathroom (shared)
           } else if (flat.is_refuge === true) {
-            quantity = 1.0  // Single refuge bathroom (only Common)
-            console.log('Refugee flat bathroom - setting quantity to 1.0')
+            baseQuantity = 1.0  // Single refuge bathroom (only Common)
           } else {
-            quantity = 2.0  // Normal flat (Common + Master)
-            console.log('Normal flat bathroom - setting quantity to 2.0')
+            baseQuantity = 2.0  // Normal flat (Common + Master)
           }
         }
-        // Note: F & G also use default 1.0 (room + balcony combined = 1 flat work)
         
-        console.log('Saving progress_entry with quantity:', quantity)
+        // Calculate quantity based on completion percentage
+        // quantity = base_quantity * (completed_checks / total_checks)
+        const completionPercentage = completedCount / totalChecks
+        const quantity = baseQuantity * completionPercentage
+        
+        console.log('Saving progress_entry:', {
+          baseQuantity,
+          completionPercentage: `${(completionPercentage * 100).toFixed(1)}%`,
+          finalQuantity: quantity
+        })
 
         if (existing) {
           await supabase
@@ -331,7 +330,7 @@ export default function EnhancedFlatWorkItem({
             .update({
               quantity_completed: quantity,
               entry_date: new Date().toISOString().split('T')[0],
-              remarks: note || 'All checks completed',
+              remarks: note || `${completedCount}/${totalChecks} checks completed`,
               updated_at: new Date().toISOString()
             })
             .eq('id', existing.id)
@@ -343,19 +342,18 @@ export default function EnhancedFlatWorkItem({
               work_item_id: workItem.id,
               quantity_completed: quantity,
               entry_date: new Date().toISOString().split('T')[0],
-              remarks: note || 'All checks completed',
+              remarks: note || `${completedCount}/${totalChecks} checks completed`,
               created_by: user.data.user?.id
             })
         }
       } else if (existing) {
-        // Not all complete but entry exists - delete it
-        // (constraint requires quantity > 0, can't have partial in progress_entries)
+        // No checks completed - delete progress entry
         await supabase
           .from('progress_entries')
           .delete()
           .eq('id', existing.id)
         
-        console.log('Deleted progress_entry - not all checks complete')
+        console.log('Deleted progress_entry - no checks completed')
       }
 
       onSave()
