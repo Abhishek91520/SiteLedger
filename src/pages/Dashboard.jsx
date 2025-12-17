@@ -812,184 +812,41 @@ export default function Dashboard() {
               </motion.button>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 dark:text-dark-text mb-2">
-                Wing
-              </label>
-              <select
-                value={filterWing}
-                onChange={(e) => setFilterWing(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white dark:bg-dark-hover border border-neutral-300 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-primary-500 text-neutral-800 dark:text-dark-text"
-              >
-                <option value="ALL">All Wings</option>
-                {wings.map(wing => (
-                  <option key={wing.id} value={wing.code}>Wing {wing.code}</option>
-                ))}
-              </select>
+        </motion.div>
+
+        {/* Project Health Overview */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-700 dark:to-purple-700 rounded-2xl shadow-lg p-8 text-white"
+        >
+          <h2 className="text-2xl font-bold mb-6">Project Health Overview</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-blue-100">Overall Completion</span>
+                <CheckCircle2 size={24} />
+              </div>
+              <div className="text-4xl font-bold mb-1">{overallStats.overallCompletion}%</div>
+              <div className="text-sm text-blue-100">
+                {overallStats.totalEntries} entries recorded
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 dark:text-dark-text mb-2">
-                Timeline Range
-              </label>
-              <select
-                value={filterDateRange}
-                onChange={(e) => setFilterDateRange(Number(e.target.value))}
-                className="w-full px-4 py-2.5 bg-white dark:bg-dark-hover border border-neutral-300 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-primary-500 text-neutral-800 dark:text-dark-text"
-              >
-                <option value="7">Last 7 Days</option>
-                <option value="30">Last 30 Days</option>
-                <option value="60">Last 60 Days</option>
-                <option value="90">Last 90 Days</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 dark:text-dark-text mb-2">
-                Work Item
-              </label>
-              <select
-                value={filterWorkItem}
-                onChange={(e) => setFilterWorkItem(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white dark:bg-dark-hover border border-neutral-300 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-primary-500 text-neutral-800 dark:text-dark-text"
-              >
-                <option value="ALL">All Work Items</option>
-                {workItemsProgress.map(item => (
-                  <option key={item.name} value={item.name}>{item.name} - {item.fullName}</option>
-                ))}
-              </select>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-blue-100">Pending Work</span>
+                <Clock size={24} />
+              </div>
+              <div className="text-4xl font-bold mb-1">{100 - overallStats.overallCompletion}%</div>
+              <div className="text-sm text-blue-100">
+                {overallStats.totalFlats - overallStats.inProgressFlats} flats not started
+              </div>
             </div>
           </div>
         </motion.div>
 
-        {/* Circular Progress Gauges */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.1 }}
-            className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-2xl shadow-soft border border-blue-200 dark:border-blue-800 p-6"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-blue-600 rounded-lg">
-                <Target size={24} className="text-white" />
-              </div>
-              <h3 className="text-lg font-bold text-neutral-800 dark:text-dark-text">Overall Progress</h3>
-            </div>
-            <div className="w-48 h-48 mx-auto">
-              <CircularProgressbar
-                value={overallStats.overallCompletion}
-                text={`${overallStats.overallCompletion}%`}
-                styles={buildStyles({
-                  textSize: '20px',
-                  pathColor: '#0EA5E9',
-                  textColor: isDark ? '#F1F5F9' : '#1E293B',
-                  trailColor: isDark ? '#334155' : '#E2E8F0',
-                  pathTransitionDuration: 1.5
-                })}
-              />
-            </div>
-            <p className="text-center text-sm text-neutral-600 dark:text-dark-muted mt-4">
-              {overallStats.totalEntries} total entries recorded
-            </p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2 }}
-            className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-2xl shadow-soft border border-green-200 dark:border-green-800 p-6"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-green-600 rounded-lg">
-                <Zap size={24} className="text-white" />
-              </div>
-              <h3 className="text-lg font-bold text-neutral-800 dark:text-dark-text">Active Flats</h3>
-            </div>
-            <div className="w-48 h-48 mx-auto">
-              <CircularProgressbar
-                value={(overallStats.inProgressFlats / overallStats.totalFlats) * 100}
-                text={`${overallStats.inProgressFlats}`}
-                styles={buildStyles({
-                  textSize: '24px',
-                  pathColor: '#10B981',
-                  textColor: isDark ? '#F1F5F9' : '#1E293B',
-                  trailColor: isDark ? '#334155' : '#E2E8F0',
-                  pathTransitionDuration: 1.5
-                })}
-              />
-            </div>
-            <p className="text-center text-sm text-neutral-600 dark:text-dark-muted mt-4">
-              of {overallStats.totalFlats} total flats
-            </p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.3 }}
-            className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-2xl shadow-soft border border-purple-200 dark:border-purple-800 p-6"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-purple-600 rounded-lg">
-                <Award size={24} className="text-white" />
-              </div>
-              <h3 className="text-lg font-bold text-neutral-800 dark:text-dark-text">Documentation</h3>
-            </div>
-            <div className="w-48 h-48 mx-auto">
-              <CircularProgressbar
-                value={documentationStats.total > 0 ? ((documentationStats.withNotes + documentationStats.withImages) / documentationStats.total) * 100 : 0}
-                text={`${documentationStats.total > 0 ? Math.round(((documentationStats.withNotes + documentationStats.withImages) / documentationStats.total) * 100) : 0}%`}
-                styles={buildStyles({
-                  textSize: '20px',
-                  pathColor: '#A855F7',
-                  textColor: isDark ? '#F1F5F9' : '#1E293B',
-                  trailColor: isDark ? '#334155' : '#E2E8F0',
-                  pathTransitionDuration: 1.5
-                })}
-              />
-            </div>
-            <p className="text-center text-sm text-neutral-600 dark:text-dark-muted mt-4">
-              {documentationStats.withNotes + documentationStats.withImages} flats documented
-            </p>
-          </motion.div>
-        </div>
-
-        {/* Project Projection */}
-        {(() => {
-          const projection = calculateProjection()
-          return projection && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="bg-gradient-to-r from-indigo-500 to-purple-600 dark:from-indigo-600 dark:to-purple-700 rounded-2xl shadow-lg p-6 text-white"
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <Calendar size={28} />
-                <h2 className="text-2xl font-bold">Project Projection</h2>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                  <p className="text-indigo-100 text-sm mb-1">Avg Daily Progress</p>
-                  <p className="text-3xl font-bold">{projection.avgDailyProgress}</p>
-                  <p className="text-indigo-200 text-xs mt-1">units/day</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                  <p className="text-indigo-100 text-sm mb-1">Days Remaining</p>
-                  <p className="text-3xl font-bold">{projection.daysRemaining || 'N/A'}</p>
-                  <p className="text-indigo-200 text-xs mt-1">estimated days</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                  <p className="text-indigo-100 text-sm mb-1">Est. Completion</p>
-                  <p className="text-xl font-bold">{projection.estimatedCompletion}</p>
-                  <p className="text-indigo-200 text-xs mt-1">projected date</p>
-                </div>
-              </div>
-            </motion.div>
-          )
-        })()}
-
-        {/* Overview Cards */}
+        {/* Simple Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatCard
             icon={Layers}
@@ -1158,106 +1015,62 @@ export default function Dashboard() {
           </ChartCard>
         </div>
 
-        {/* Completion Timeline */}
-        <ChartCard title="Completion Timeline" delay={0.6}>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={completionTimeline}>
-              <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#E5E7EB'} />
-              <XAxis 
-                dataKey="date" 
-                stroke={isDark ? '#94A3B8' : '#6B7280'}
-                style={{ fontSize: '12px' }}
-              />
-              <YAxis 
-                stroke={isDark ? '#94A3B8' : '#6B7280'}
-                style={{ fontSize: '12px' }}
-              />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
-                  border: `1px solid ${isDark ? '#334155' : '#E5E5E5'}`,
-                  borderRadius: '12px'
-                }}
-              />
-              <Legend />
-              <Line 
-                type="monotone" 
-                dataKey="entries" 
-                stroke="#0EA5E9" 
-                strokeWidth={3}
-                name="Entries"
-                dot={{ fill: '#0EA5E9', r: 4 }}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="quantity" 
-                stroke="#10B981" 
-                strokeWidth={3}
-                name="Quantity"
-                dot={{ fill: '#10B981', r: 4 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        {/* Documentation Statistics */}
-        <ChartCard title="Documentation Coverage" delay={0.65}>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-center">
-              <FileText className="mx-auto mb-2 text-blue-600 dark:text-blue-400" size={28} />
-              <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">{documentationStats.withNotes}</p>
-              <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">With Notes</p>
-            </div>
-            <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl text-center">
-              <Camera className="mx-auto mb-2 text-purple-600 dark:text-purple-400" size={28} />
-              <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">{documentationStats.withImages}</p>
-              <p className="text-sm text-purple-600 dark:text-purple-400 mt-1">With Images</p>
-            </div>
-            <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-xl text-center">
-              <CheckCircle2 className="mx-auto mb-2 text-green-600 dark:text-green-400" size={28} />
-              <p className="text-2xl font-bold text-green-700 dark:text-green-300">{documentationStats.withBoth}</p>
-              <p className="text-sm text-green-600 dark:text-green-400 mt-1">With Both</p>
-            </div>
-            <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl text-center">
-              <AlertCircle className="mx-auto mb-2 text-red-600 dark:text-red-400" size={28} />
-              <p className="text-2xl font-bold text-red-700 dark:text-red-300">{documentationStats.noDocs}</p>
-              <p className="text-sm text-red-600 dark:text-red-400 mt-1">No Docs</p>
-            </div>
-          </div>
-          {documentationStats.total > 0 && (
-            <div className="mt-4 p-3 bg-neutral-50 dark:bg-dark-hover rounded-lg">
-              <p className="text-sm text-neutral-600 dark:text-dark-muted text-center">
-                <span className="font-bold text-primary-600 dark:text-primary-400">
-                  {Math.round(((documentationStats.withNotes + documentationStats.withImages) / documentationStats.total) * 100)}%
-                </span> flats have documentation
-              </p>
-            </div>
-          )}
-        </ChartCard>
-
-        {/* Top Performing Floors */}
-        <ChartCard title="Top Performing Floors" delay={0.7}>
+        {/* Pending Work Concentration - Where is work pending? */}
+        <ChartCard title="Pending Work Concentration by Wing & Floor" delay={0.6}>
           <div className="space-y-3">
-            {topPerformingFloors.slice(0, 10).map((floor, index) => (
-              <motion.div
-                key={floor.floor}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.7 + index * 0.05, duration: 0.3 }}
-                className="flex items-center gap-4 p-3 rounded-xl bg-neutral-50 dark:bg-dark-hover"
-              >
-                <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-primary-500 to-blue-600 text-white rounded-lg flex items-center justify-center font-bold text-sm">
-                  {index + 1}
+            {wingProgress.map((wing, idx) => (
+              <div key={idx} className="p-4 bg-neutral-50 dark:bg-dark-hover rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-bold text-neutral-800 dark:text-dark-text">{wing.name}</h4>
+                  <span className="text-sm text-neutral-600 dark:text-dark-muted">
+                    {wing.pending} flats pending
+                  </span>
                 </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-neutral-800 dark:text-dark-text">{floor.floor}</p>
-                  <p className="text-xs text-neutral-600 dark:text-dark-muted">{floor.flats} flats</p>
+                <div className="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-2">
+                  <div 
+                    className="bg-orange-500 h-2 rounded-full transition-all duration-500"
+                    style={{ width: `${(wing.pending / wing.totalFlats) * 100}%` }}
+                  />
                 </div>
-                <div className="text-right">
-                  <p className="text-xl font-bold text-primary-600 dark:text-primary-400">{floor.completion}%</p>
-                </div>
-              </motion.div>
+              </div>
             ))}
+          </div>
+        </ChartCard>
+
+        {/* Work Items - Attention List */}
+        <ChartCard title="Work Items Requiring Attention" delay={0.65}>
+          <div className="space-y-2">
+            {workItemsProgress
+              .filter(item => item.percentage < 100 && item.percentage > 0)
+              .sort((a, b) => a.percentage - b.percentage)
+              .slice(0, 5)
+              .map((item, idx) => (
+                <div key={idx} className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border-l-4 border-yellow-500">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-neutral-800 dark:text-dark-text">
+                        {item.name} - {item.fullName}
+                      </span>
+                      <p className="text-sm text-neutral-600 dark:text-dark-muted mt-1">
+                        {item.remaining} units remaining ({item.percentage}% complete)
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+                        {item.remaining}
+                      </div>
+                      <div className="text-xs text-neutral-500">pending</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            {workItemsProgress.filter(item => item.percentage === 0).length > 0 && (
+              <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border-l-4 border-red-500">
+                <p className="text-sm font-bold text-red-700 dark:text-red-300">
+                  ⚠️ {workItemsProgress.filter(item => item.percentage === 0).length} work items not started yet
+                </p>
+              </div>
+            )}
           </div>
         </ChartCard>
 
