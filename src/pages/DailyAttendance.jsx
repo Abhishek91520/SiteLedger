@@ -464,7 +464,7 @@ export default function DailyAttendance() {
                             className={`py-3 px-1 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
                               selectedType === type.value
                                 ? `bg-${type.color}-600 text-white shadow-lg scale-105`
-                                : `bg-${type.color}-50 dark:bg-${type.color}-900/20 text-${type.color}-700 dark:text-${type.color}-400 hover:bg-${type.color}-100 dark:hover:bg-${type.color}-900/30`
+                                : `bg-${type.color}-50 dark:bg-${type.color}-900/20 text-${type.color}-700 dark:text-${type.color}-400 hover:bg-${type.color}-100 dark:hover:bg-${type.color}-900/20`
                             }`}
                             style={{
                               backgroundColor: selectedType === type.value 
@@ -474,7 +474,7 @@ export default function DailyAttendance() {
                                 : type.color === 'indigo' ? '#4f46e5'
                                 : type.color === 'purple' ? '#9333ea'
                                 : '#dc2626'
-                                : (type.value === 'H' ? '#fef08a' : type.value === 'P+½' ? '#c7d2fe' : undefined),
+                                : (type.value === 'H' ? '#9f8c00' : type.value === 'P+½' ? '#c7d2fe' : undefined),
                               color: selectedType === type.value 
                                 ? '#ffffff'
                                 : (type.value === 'H' ? '#854d0e' : type.value === 'P+½' ? '#3730a3' : undefined)
