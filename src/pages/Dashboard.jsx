@@ -782,12 +782,12 @@ export default function Dashboard() {
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="bg-gradient-to-r from-primary-500 to-primary-600 dark:from-primary-600 dark:to-blue-700 text-white px-4 py-8 md:px-6 md:py-10 shadow-soft-lg"
+        className="bg-gradient-to-r from-primary-500 to-primary-600 dark:from-primary-600 dark:to-blue-700 text-white px-4 py-4 md:px-6 md:py-5 shadow-soft-lg"
       >
         <div className="max-w-7xl mx-auto flex justify-between items-start">
           <div>
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{project?.name}</h1>
-            <p className="text-primary-100 dark:text-primary-200 mt-2 text-lg">Work Progress Analytics</p>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{project?.name}</h1>
+            <p className="text-primary-100 dark:text-primary-200 mt-1 text-sm md:text-base">Work Progress Analytics</p>
           </div>
           <motion.button
             whileHover={{ scale: 1.1 }}
@@ -800,19 +800,19 @@ export default function Dashboard() {
         </div>
       </motion.div>
 
-      <div className="p-4 md:p-6 space-y-8 max-w-7xl mx-auto">
+      <div className="p-3 md:p-4 space-y-4 md:space-y-5 max-w-7xl mx-auto">
         {/* Filters & Export */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white dark:bg-dark-card rounded-2xl shadow-soft border border-neutral-200 dark:border-dark-border p-6"
+          className="bg-white dark:bg-dark-card rounded-xl shadow-soft border border-neutral-200 dark:border-dark-border p-3 md:p-4"
         >
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Filter size={20} className="text-primary-600 dark:text-primary-400" />
-              <h2 className="text-xl font-bold text-neutral-800 dark:text-dark-text">Filters & Export</h2>
+              <Filter size={18} className="text-primary-600 dark:text-primary-400" />
+              <h2 className="text-lg md:text-xl font-bold text-neutral-800 dark:text-dark-text">Filters & Export</h2>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-1.5">
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -840,27 +840,27 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-700 dark:to-purple-700 rounded-2xl shadow-lg p-8 text-white"
+          className="bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-700 dark:to-purple-700 rounded-xl shadow-lg p-4 md:p-5 text-white"
         >
-          <h2 className="text-2xl font-bold mb-6">Project Health Overview</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">
+          <h2 className="text-xl md:text-2xl font-bold mb-3 md:mb-4">Project Health Overview</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-blue-100">Overall Completion</span>
-                <CheckCircle2 size={24} />
+                <span className="text-sm text-blue-100">Overall Completion</span>
+                <CheckCircle2 size={20} />
               </div>
-              <div className="text-4xl font-bold mb-1">{overallStats.overallCompletion}%</div>
-              <div className="text-sm text-blue-100">
+              <div className="text-3xl md:text-4xl font-bold mb-1">{overallStats.overallCompletion}%</div>
+              <div className="text-xs text-blue-100">
                 {overallStats.totalEntries} entries recorded
               </div>
             </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-blue-100">Pending Work</span>
-                <Clock size={24} />
+                <span className="text-sm text-blue-100">Pending Work</span>
+                <Clock size={20} />
               </div>
-              <div className="text-4xl font-bold mb-1">{100 - overallStats.overallCompletion}%</div>
-              <div className="text-sm text-blue-100">
+              <div className="text-3xl md:text-4xl font-bold mb-1">{100 - overallStats.overallCompletion}%</div>
+              <div className="text-xs text-blue-100">
                 {overallStats.totalFlats - overallStats.inProgressFlats} flats not started
               </div>
             </div>
@@ -868,7 +868,7 @@ export default function Dashboard() {
         </motion.div>
 
         {/* Simple Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           <StatCard
             icon={Layers}
             label="Total Flats"
@@ -946,10 +946,10 @@ export default function Dashboard() {
         </div>
 
         {/* Charts Row 1 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
           {/* Work Items Progress Chart */}
           <ChartCard title="Work Items Completion" delay={0.7}>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={240}>
               <BarChart data={workItemsProgress}>
                 <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#E5E5E5'} />
                 <XAxis dataKey="name" stroke={isDark ? '#94A3B8' : '#737373'} />
@@ -970,7 +970,7 @@ export default function Dashboard() {
 
           {/* Wing Progress Pie Chart */}
           <ChartCard title="Progress by Wing" delay={0.5}>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={240}>
               <PieChart>
                 <Pie
                   data={wingProgress}
@@ -1001,7 +1001,7 @@ export default function Dashboard() {
 
         {/* Work Items Detailed Progress */}
         <ChartCard title="Detailed Work Item Status" delay={0.75}>
-          <div className="space-y-4">
+          <div className="space-y-2">
             {workItemsProgress.map((item, index) => (
               <WorkItemProgress key={item.name} item={item} delay={0.8 + index * 0.05} />
             ))}
@@ -1010,7 +1010,7 @@ export default function Dashboard() {
 
         {/* Recent Activity */}
         <ChartCard title="Recent Progress Entries" delay={0.9}>
-          <div className="space-y-3">
+          <div className="space-y-2">
             {recentEntries.slice(0, 8).map((entry, index) => (
               <RecentEntry key={entry.id} entry={entry} delay={0.95 + index * 0.02} />
             ))}
@@ -1071,15 +1071,15 @@ function StatCard({ icon: Icon, label, value, subtitle, color, progress, delay, 
       transition={{ delay, duration: 0.5 }}
       whileHover={{ scale: 1.02, y: -4 }}
       onClick={onClick}
-      className={`bg-white dark:bg-dark-card rounded-2xl shadow-soft dark:shadow-none border border-neutral-100 dark:border-dark-border p-6 transition-all ${onClick ? 'cursor-pointer hover:border-primary-500 dark:hover:border-primary-500' : ''}`}
+      className={`bg-white dark:bg-dark-card rounded-xl shadow-soft dark:shadow-none border border-neutral-100 dark:border-dark-border p-3 md:p-4 transition-all ${onClick ? 'cursor-pointer hover:border-primary-500 dark:hover:border-primary-500' : ''}`}
     >
       <div className="flex items-center justify-between">
         <div className="flex-1">
-          <p className="text-sm font-medium text-neutral-500 dark:text-dark-muted mb-2">{label}</p>
-          <p className="text-3xl font-bold text-neutral-800 dark:text-dark-text mb-2">{value}</p>
+          <p className="text-xs font-medium text-neutral-500 dark:text-dark-muted mb-1">{label}</p>
+          <p className="text-2xl md:text-3xl font-bold text-neutral-800 dark:text-dark-text mb-1">{value}</p>
           {subtitle && <p className="text-xs text-neutral-400 dark:text-dark-muted">{subtitle}</p>}
           {progress !== undefined && (
-            <div className="mt-3 h-2 bg-neutral-200 dark:bg-dark-hover rounded-full overflow-hidden">
+            <div className="mt-2 h-1.5 bg-neutral-200 dark:bg-dark-hover rounded-full overflow-hidden">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${progress}%` }}
@@ -1089,8 +1089,8 @@ function StatCard({ icon: Icon, label, value, subtitle, color, progress, delay, 
             </div>
           )}
         </div>
-        <div className={`p-4 bg-gradient-to-br ${colorClasses[color]} rounded-2xl animate-breathe`}>
-          <Icon className={iconColors[color]} size={28} />
+        <div className={`p-3 bg-gradient-to-br ${colorClasses[color]} rounded-xl animate-breathe`}>
+          <Icon className={iconColors[color]} size={24} />
         </div>
       </div>
     </motion.div>
@@ -1103,9 +1103,9 @@ function ChartCard({ title, children, delay }) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.5 }}
-      className="bg-white dark:bg-dark-card rounded-2xl shadow-soft dark:shadow-none border border-neutral-100 dark:border-dark-border p-6 md:p-8 transition-all"
+      className="bg-white dark:bg-dark-card rounded-xl shadow-soft dark:shadow-none border border-neutral-100 dark:border-dark-border p-3 md:p-4 transition-all"
     >
-      <h2 className="text-xl font-bold text-neutral-800 dark:text-dark-text mb-6">{title}</h2>
+      <h2 className="text-lg md:text-xl font-bold text-neutral-800 dark:text-dark-text mb-3 md:mb-4">{title}</h2>
       {children}
     </motion.div>
   )
@@ -1131,19 +1131,19 @@ function WorkItemProgress({ item, delay }) {
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay, duration: 0.3 }}
-      className="flex items-center gap-4 p-4 rounded-xl bg-neutral-50 dark:bg-dark-hover hover:bg-neutral-100 dark:hover:bg-dark-border transition-colors"
+      className="flex items-center gap-3 p-3 rounded-lg bg-neutral-50 dark:bg-dark-hover hover:bg-neutral-100 dark:hover:bg-dark-border transition-colors"
     >
       <div className="flex-shrink-0">
-        <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 rounded-xl flex items-center justify-center font-bold">
+        <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 rounded-lg flex items-center justify-center font-bold text-sm">
           {item.name}
         </div>
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           {getStatusIcon(item.percentage)}
-          <p className="font-bold text-neutral-800 dark:text-dark-text truncate">{item.fullName}</p>
+          <p className="font-semibold text-sm text-neutral-800 dark:text-dark-text truncate">{item.fullName}</p>
         </div>
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex items-center gap-2 text-xs">
           <span className="text-neutral-600 dark:text-dark-muted">
             {item.completed} / {item.total} completed
           </span>
@@ -1152,7 +1152,7 @@ function WorkItemProgress({ item, delay }) {
             {item.percentage}%
           </span>
         </div>
-        <div className="mt-2 h-2 bg-neutral-200 dark:bg-dark-bg rounded-full overflow-hidden">
+        <div className="mt-1.5 h-1.5 bg-neutral-200 dark:bg-dark-bg rounded-full overflow-hidden">
           <motion.div
             initial={{ width: 0 }}
             animate={{ width: `${item.percentage}%` }}
@@ -1163,7 +1163,7 @@ function WorkItemProgress({ item, delay }) {
         </div>
       </div>
       <div className="flex-shrink-0 text-right">
-        <p className="text-2xl font-bold text-neutral-800 dark:text-dark-text">{item.percentage}%</p>
+        <p className="text-xl font-bold text-neutral-800 dark:text-dark-text">{item.percentage}%</p>
         <p className="text-xs text-neutral-500 dark:text-dark-muted">{item.remaining} left</p>
       </div>
     </motion.div>
@@ -1176,23 +1176,23 @@ function RecentEntry({ entry, delay }) {
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay, duration: 0.3 }}
-      className="flex items-center justify-between p-4 rounded-xl bg-neutral-50 dark:bg-dark-hover hover:bg-neutral-100 dark:hover:bg-dark-border transition-colors"
+      className="flex items-center justify-between p-3 rounded-lg bg-neutral-50 dark:bg-dark-hover hover:bg-neutral-100 dark:hover:bg-dark-border transition-colors"
     >
-      <div className="flex items-center gap-4">
-        <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 rounded-lg flex items-center justify-center font-bold text-sm">
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 rounded-lg flex items-center justify-center font-bold text-xs">
           {entry.work_item?.code}
         </div>
         <div>
-          <p className="font-semibold text-neutral-800 dark:text-dark-text">
+          <p className="font-semibold text-sm text-neutral-800 dark:text-dark-text">
             {entry.work_item?.name}
           </p>
-          <p className="text-sm text-neutral-600 dark:text-dark-muted">
+          <p className="text-xs text-neutral-600 dark:text-dark-muted">
             Wing {entry.flat?.wing?.code} - Flat {entry.flat?.flat_number}
           </p>
         </div>
       </div>
       <div className="text-right">
-        <p className="font-bold text-neutral-800 dark:text-dark-text">
+        <p className="font-semibold text-sm text-neutral-800 dark:text-dark-text">
           {entry.quantity_completed} nos
         </p>
         <p className="text-xs text-neutral-500 dark:text-dark-muted">

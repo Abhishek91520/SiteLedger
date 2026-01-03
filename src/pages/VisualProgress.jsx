@@ -252,6 +252,10 @@ export default function VisualProgress() {
   const { isDark } = useTheme()
   const [selectedWing, setSelectedWing] = useState('A')
   const [selectedWorkItem, setSelectedWorkItem] = useState('ALL')
+  const [subtaskFilter, setSubtaskFilter] = useState('ALL') // ALL, PENDING, COMPLETED
+  const [availableSubtasks, setAvailableSubtasks] = useState([]) // All subtasks for selected work item
+  const [selectedSubtasks, setSelectedSubtasks] = useState([]) // Selected subtask IDs
+  const [isSubtaskDropdownOpen, setIsSubtaskDropdownOpen] = useState(false)
   const [workItems, setWorkItems] = useState([])
   const [wings, setWings] = useState([])
   const [selectedFlat, setSelectedFlat] = useState(null)
@@ -260,10 +264,50 @@ export default function VisualProgress() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const cameraRef = useRef()
   const controlsRef = useRef()
+  const subtaskDropdownRef = useRef()
 
   useEffect(() => {
     loadData()
-  }, [selectedWing, selectedWorkItem, workItems.length])
+  }, [selectedWing, selectedWorkItem, subtaskFilter, workItems.length])
+
+  // Load available subtasks when work item changes
+  useEffect(() => {
+    loadAvailableSubtasks()
+  }, [selectedWorkItem])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (subtaskDropdownRef.current && !subtaskDropdownRef.current.contains(event.target)) {
+        setIsSubtaskDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const loadAvailableSubtasks = async () => {
+    if (selectedWorkItem === 'ALL') {
+      setAvailableSubtasks([])
+      setSelectedSubtasks([])
+      return
+    }
+
+    try {
+      const { data: configs } = await supabase
+        .from('work_item_detail_config')
+        .select('id, detail_name, category, requires_bhk_type')
+        .eq('work_item_code', selectedWorkItem)
+        .eq('is_active', true)
+        .order('detail_name')
+
+      setAvailableSubtasks(configs || [])
+      setSelectedSubtasks([]) // Reset selection when work item changes
+    } catch (error) {
+      console.error('Error loading subtasks:', error)
+      setAvailableSubtasks([])
+    }
+  }
 
   const loadData = async () => {
     try {
@@ -437,18 +481,26 @@ export default function VisualProgress() {
               completion_percentage = hasEntry ? 100 : 0
             } else {
               const detailChecks = detailChecksByFlat[`${flat.id}-${selectedItem.id}`] || []
-              const relevantChecks = detailChecks.filter(c => 
-                applicableConfigIds.includes(c.detail_config_id)
-              )
               
-              if (relevantChecks.length > 0) {
-                const completed = relevantChecks.filter(c => c.is_completed).length
-                completion_percentage = (completed / applicableConfigIds.length) * 100
+              // If specific subtasks are selected, only consider those
+              let checksToConsider = applicableConfigIds
+              if (selectedSubtasks.length > 0) {
+                checksToConsider = applicableConfigIds.filter(id => selectedSubtasks.includes(id))
+              }
+              
+              if (checksToConsider.length === 0) {
+                completion_percentage = 0
               } else {
-                const hasEntry = entries.some(e => 
-                  e.work_item_id === selectedItem.id && e.quantity_completed > 0
+                const relevantChecks = detailChecks.filter(c => 
+                  checksToConsider.includes(c.detail_config_id)
                 )
-                completion_percentage = hasEntry ? 100 : 0
+                
+                if (relevantChecks.length > 0) {
+                  const completed = relevantChecks.filter(c => c.is_completed).length
+                  completion_percentage = (completed / checksToConsider.length) * 100
+                } else {
+                  completion_percentage = 0
+                }
               }
             }
           }
@@ -585,6 +637,17 @@ export default function VisualProgress() {
           applicableConfigIds.includes(check.detail_config_id)
         )
 
+        // Add ALL subtasks (completed + incomplete) with config details
+        const allSubtasks = applicableConfigs.map(config => {
+          const existingCheck = detailChecks.find(c => c.detail_config_id === config.id)
+          return {
+            id: existingCheck?.id || `pending-${config.id}`,
+            detail_config_id: config.id,
+            is_completed: existingCheck?.is_completed || false,
+            detail_config: config
+          }
+        })
+
         // Calculate completion
         let percentage = 0
         let completedChecks = 0
@@ -608,7 +671,7 @@ export default function VisualProgress() {
           unit: applicableConfigs.length > 0 ? 'checks' : 'flat',
           completion_percentage: percentage,
           last_updated: itemEntries.length > 0 ? itemEntries[0].entry_date : null,
-          detailed_checks: detailChecks || []
+          detailed_checks: allSubtasks || [] // Now includes all subtasks
         }
       })
 
@@ -649,6 +712,33 @@ export default function VisualProgress() {
       controlsRef.current.target.set(0, 5, 0)
       controlsRef.current.update()
     }
+  }
+
+  const toggleSubtask = (subtaskId) => {
+    setSelectedSubtasks(prev => {
+      if (prev.includes(subtaskId)) {
+        return prev.filter(id => id !== subtaskId)
+      } else {
+        return [...prev, subtaskId]
+      }
+    })
+  }
+
+  const toggleAllSubtasks = () => {
+    if (selectedSubtasks.length === availableSubtasks.length) {
+      setSelectedSubtasks([])
+    } else {
+      setSelectedSubtasks(availableSubtasks.map(s => s.id))
+    }
+  }
+
+  const clearSubtaskFilter = () => {
+    setSelectedSubtasks([])
+  }
+
+  const applySubtaskFilter = () => {
+    setIsSubtaskDropdownOpen(false)
+    loadData() // Reload with new filter
   }
 
   if (loading) {
@@ -714,21 +804,137 @@ export default function VisualProgress() {
             </button>
           </div>
 
-          {/* Bottom Row: Work Item Filter */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs sm:text-sm font-semibold text-neutral-700 dark:text-dark-text whitespace-nowrap">Filter:</span>
-            <select
-              value={selectedWorkItem}
-              onChange={(e) => setSelectedWorkItem(e.target.value)}
-              className="flex-1 px-3 py-2 text-sm bg-neutral-100 dark:bg-dark-hover border border-neutral-200 dark:border-dark-border rounded-lg font-medium text-neutral-700 dark:text-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-              <option value="ALL">All Work Items</option>
-              {workItems.map((item) => (
-                <option key={item.id} value={item.code}>
-                  {item.code} - {item.name}
-                </option>
-              ))}
-            </select>
+          {/* Bottom Row: Work Item & Subtask Filters */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs sm:text-sm font-semibold text-neutral-700 dark:text-dark-text whitespace-nowrap flex-shrink-0">Work Item:</span>
+              <select
+                value={selectedWorkItem}
+                onChange={(e) => setSelectedWorkItem(e.target.value)}
+                className="flex-1 min-w-0 px-3 py-2 text-sm bg-neutral-100 dark:bg-dark-hover border border-neutral-200 dark:border-dark-border rounded-lg font-medium text-neutral-700 dark:text-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="ALL">All Work Items</option>
+                {workItems.map((item) => (
+                  <option key={item.id} value={item.code}>
+                    {item.code} - {item.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2 relative min-w-0" ref={subtaskDropdownRef}>
+              <span className="text-xs sm:text-sm font-semibold text-neutral-700 dark:text-dark-text whitespace-nowrap flex-shrink-0">Subtasks:</span>
+              <div className="flex-1 min-w-0">
+                <button
+                  onClick={() => setIsSubtaskDropdownOpen(!isSubtaskDropdownOpen)}
+                  disabled={selectedWorkItem === 'ALL' || availableSubtasks.length === 0}
+                  className="w-full px-3 py-2 text-sm bg-neutral-100 dark:bg-dark-hover border border-neutral-200 dark:border-dark-border rounded-lg font-medium text-neutral-700 dark:text-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500 text-left flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="truncate">
+                    {selectedWorkItem === 'ALL' 
+                      ? 'Select a work item first'
+                      : availableSubtasks.length === 0
+                      ? 'No subtasks available'
+                      : selectedSubtasks.length === 0
+                      ? 'All Subtasks'
+                      : selectedSubtasks.length === availableSubtasks.length
+                      ? 'All Subtasks Selected'
+                      : `${selectedSubtasks.length} subtask${selectedSubtasks.length > 1 ? 's' : ''} selected`
+                    }
+                  </span>
+                  <Filter size={16} className="ml-2 flex-shrink-0" />
+                </button>
+                
+                {/* Dropdown Menu */}
+                {isSubtaskDropdownOpen && availableSubtasks.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 sm:left-auto sm:right-0 sm:w-80 mt-1 bg-white dark:bg-dark-card border border-neutral-200 dark:border-dark-border rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
+                    {/* Header with Select All */}
+                    <div className="sticky top-0 bg-white dark:bg-dark-card border-b border-neutral-200 dark:border-dark-border p-2 flex items-center justify-between">
+                      <button
+                        onClick={toggleAllSubtasks}
+                        className="text-xs font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+                      >
+                        {selectedSubtasks.length === availableSubtasks.length ? 'Deselect All' : 'Select All'}
+                      </button>
+                      {selectedSubtasks.length > 0 && (
+                        <button
+                          onClick={clearSubtaskFilter}
+                          className="text-xs font-semibold text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    
+                    {/* Status Filter Quick Buttons */}
+                    <div className="p-2 border-b border-neutral-200 dark:border-dark-border bg-neutral-50 dark:bg-dark-hover">
+                      <div className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1.5">Quick Filters:</div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setSubtaskFilter('ALL')}
+                          className={`px-2 py-1 text-xs rounded ${subtaskFilter === 'ALL' ? 'bg-primary-500 text-white' : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300'}`}
+                        >
+                          All Status
+                        </button>
+                        <button
+                          onClick={() => setSubtaskFilter('PENDING')}
+                          className={`px-2 py-1 text-xs rounded ${subtaskFilter === 'PENDING' ? 'bg-orange-500 text-white' : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300'}`}
+                        >
+                          Pending
+                        </button>
+                        <button
+                          onClick={() => setSubtaskFilter('COMPLETED')}
+                          className={`px-2 py-1 text-xs rounded ${subtaskFilter === 'COMPLETED' ? 'bg-green-500 text-white' : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300'}`}
+                        >
+                          Completed
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* Subtask List */}
+                    <div className="p-2">
+                      {availableSubtasks.map((subtask) => (
+                        <label
+                          key={subtask.id}
+                          className="flex items-start gap-2 p-2 hover:bg-neutral-100 dark:hover:bg-dark-hover rounded cursor-pointer transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedSubtasks.includes(subtask.id)}
+                            onChange={() => toggleSubtask(subtask.id)}
+                            className="mt-0.5 w-4 h-4 text-primary-600 border-neutral-300 dark:border-neutral-600 rounded focus:ring-2 focus:ring-primary-500 cursor-pointer"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-neutral-800 dark:text-dark-text">
+                              {subtask.detail_name}
+                            </div>
+                            {subtask.category && (
+                              <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                                {subtask.category.replace('_', ' ')}
+                              </div>
+                            )}
+                            {subtask.requires_bhk_type && (
+                              <div className="text-xs text-primary-600 dark:text-primary-400">
+                                {subtask.requires_bhk_type} only
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                    
+                    {/* Apply Button */}
+                    <div className="sticky bottom-0 bg-white dark:bg-dark-card border-t border-neutral-200 dark:border-dark-border p-2">
+                      <button
+                        onClick={applySubtaskFilter}
+                        className="w-full px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-semibold transition-colors text-sm"
+                      >
+                        Apply Filter ({selectedSubtasks.length === 0 ? 'All' : selectedSubtasks.length})
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Legend - Hidden on mobile, shown as bottom bar */}
@@ -991,7 +1197,26 @@ export default function VisualProgress() {
               {/* Work Items Progress - Moved to bottom */}
               {selectedFlat.work_items_progress && selectedFlat.work_items_progress.length > 0 && (
                 <div className="mt-4 md:mt-6">
-                  <h4 className="text-base md:text-lg font-bold text-neutral-800 dark:text-dark-text mb-3 md:mb-4">Work Items Progress</h4>
+                  <div className="flex items-center justify-between mb-3 md:mb-4">
+                    <h4 className="text-base md:text-lg font-bold text-neutral-800 dark:text-dark-text">Work Items Progress</h4>
+                    <div className="flex gap-2">
+                      {(() => {
+                        const totalSubtasks = selectedFlat.work_items_progress.reduce((sum, item) => sum + (item.detailed_checks?.length || 0), 0)
+                        const completedSubtasks = selectedFlat.work_items_progress.reduce((sum, item) => sum + (item.detailed_checks?.filter(c => c.is_completed).length || 0), 0)
+                        const pendingSubtasks = totalSubtasks - completedSubtasks
+                        return (
+                          <>
+                            <span className="px-2 py-1 text-xs font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded">
+                              {completedSubtasks} Done
+                            </span>
+                            <span className="px-2 py-1 text-xs font-bold bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded">
+                              {pendingSubtasks} Pending
+                            </span>
+                          </>
+                        )
+                      })()}
+                    </div>
+                  </div>
                   <div className="space-y-2.5 md:space-y-3 max-h-[50vh] md:max-h-96 overflow-y-auto pr-1">
                     {selectedFlat.work_items_progress.map((item) => (
                       <div key={item.work_item_code} className="p-3 md:p-3 bg-neutral-50 dark:bg-dark-hover rounded-lg border border-neutral-200 dark:border-dark-border">
@@ -1023,28 +1248,74 @@ export default function VisualProgress() {
                           />
                         </div>
                         
-                        {/* Show detailed checks if available */}
-                        {item.detailed_checks && item.detailed_checks.length > 0 && (
-                          <div className="mt-2 space-y-1">
-                            {item.detailed_checks.map((check) => (
-                              <div key={check.id} className="flex items-center gap-2 text-xs">
-                                {check.is_completed ? (
-                                  <CheckCircle2 size={14} className="text-green-500 flex-shrink-0" />
-                                ) : (
-                                  <Circle size={14} className="text-neutral-400 dark:text-neutral-600 flex-shrink-0" />
-                                )}
-                                <span className={check.is_completed ? "text-neutral-700 dark:text-neutral-300" : "text-neutral-500 dark:text-neutral-500"}>
-                                  {check.detail_config?.detail_name}
-                                  {check.detail_config?.category && (
-                                    <span className="text-neutral-400 dark:text-neutral-600 ml-1">
-                                      ({check.detail_config.category.replace('_', ' ')})
-                                    </span>
-                                  )}
+                        {/* Show detailed checks if available - always show all subtasks in flat details */}
+                        {item.detailed_checks && item.detailed_checks.length > 0 && (() => {
+                          // In flat details modal, show ALL subtasks regardless of filter
+                          const allChecks = item.detailed_checks
+                          const completedChecks = allChecks.filter(c => c.is_completed)
+                          const pendingChecks = allChecks.filter(c => !c.is_completed)
+                          
+                          if (allChecks.length === 0) return null
+                          
+                          return (
+                            <div className="mt-2">
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span className="text-xs font-semibold text-neutral-600 dark:text-neutral-400">Subtasks:</span>
+                                <span className="text-xs text-neutral-500 dark:text-neutral-500">
+                                  {completedChecks.length}/{allChecks.length} completed
                                 </span>
                               </div>
-                            ))}
-                          </div>
-                        )}
+                              
+                              {/* Completed Subtasks */}
+                              {completedChecks.length > 0 && (
+                                <div className="mb-2">
+                                  <div className="text-xs font-semibold text-green-600 dark:text-green-400 mb-1">
+                                    ✓ Completed ({completedChecks.length})
+                                  </div>
+                                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                                    {completedChecks.map((check) => (
+                                      <div key={check.id} className="flex items-center gap-2 text-xs p-1.5 rounded bg-green-50 dark:bg-green-900/10">
+                                        <CheckCircle2 size={14} className="text-green-600 dark:text-green-500 flex-shrink-0" />
+                                        <span className="text-neutral-700 dark:text-neutral-300 font-medium">
+                                          {check.detail_config?.detail_name}
+                                          {check.detail_config?.category && (
+                                            <span className="text-neutral-400 dark:text-neutral-500 ml-1 text-[10px]">
+                                              ({check.detail_config.category.replace('_', ' ')})
+                                            </span>
+                                          )}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Pending Subtasks */}
+                              {pendingChecks.length > 0 && (
+                                <div>
+                                  <div className="text-xs font-semibold text-orange-600 dark:text-orange-400 mb-1">
+                                    ⭕ Pending ({pendingChecks.length})
+                                  </div>
+                                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                                    {pendingChecks.map((check) => (
+                                      <div key={check.id} className="flex items-center gap-2 text-xs p-1.5 rounded bg-orange-50 dark:bg-orange-900/10">
+                                        <Circle size={14} className="text-orange-500 dark:text-orange-400 flex-shrink-0" />
+                                        <span className="text-neutral-600 dark:text-neutral-400">
+                                          {check.detail_config?.detail_name}
+                                          {check.detail_config?.category && (
+                                            <span className="text-neutral-400 dark:text-neutral-500 ml-1 text-[10px]">
+                                              ({check.detail_config.category.replace('_', ' ')})
+                                            </span>
+                                          )}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </div>
                     ))}
                   </div>

@@ -522,6 +522,7 @@ function CreateProformaModal({ onClose, onSuccess }) {
     configVersionId: '',
     invoiceDate: new Date().toISOString().split('T')[0],
     selectedWorkItems: [],
+    selectedFlats: {}, // { workItemId: [flatId1, flatId2, ...] }
     cgstRate: 9,
     sgstRate: 9,
     remarks: ''
@@ -531,6 +532,7 @@ function CreateProformaModal({ onClose, onSuccess }) {
   const [configVersions, setConfigVersions] = useState([])
   const [workItems, setWorkItems] = useState([])
   const [completedWork, setCompletedWork] = useState([])
+  const [flatDetails, setFlatDetails] = useState({})
 
   useEffect(() => {
     loadInitialData()
@@ -609,7 +611,7 @@ function CreateProformaModal({ onClose, onSuccess }) {
 
   const loadCompletedWork = async () => {
     try {
-      // Load all progress entries with work item details
+      // Load all progress entries with work item and flat details
       const { data: entries, error } = await supabase
         .from('progress_entries')
         .select(`
@@ -617,7 +619,8 @@ function CreateProformaModal({ onClose, onSuccess }) {
           flat_id,
           work_item_id,
           quantity_completed,
-          work_items!inner(id, code, name)
+          work_items!inner(id, code, name),
+          flats!inner(id, flat_number, floors!inner(floor_number, wings!inner(code)))
         `)
         .gt('quantity_completed', 0)
 
@@ -628,8 +631,21 @@ function CreateProformaModal({ onClose, onSuccess }) {
 
       console.log('Loaded progress entries:', entries)
 
-      // Group by work item and sum quantities
-      // Note: Joint refuge flats have quantity_completed = 0.5 for bathrooms
+      // Build flat details map
+      const flatDetailsMap = {}
+      entries?.forEach(entry => {
+        if (entry.flats && !flatDetailsMap[entry.flat_id]) {
+          flatDetailsMap[entry.flat_id] = {
+            id: entry.flat_id,
+            flat_number: entry.flats.flat_number,
+            wing_code: entry.flats.floors?.wings?.code || '',
+            floor_number: entry.flats.floors?.floor_number || 0
+          }
+        }
+      })
+      setFlatDetails(flatDetailsMap)
+
+      // Group by work item with flat-level details
       const workItemMap = {}
       entries?.forEach(entry => {
         const code = entry.work_items?.code
@@ -642,13 +658,18 @@ function CreateProformaModal({ onClose, onSuccess }) {
           workItemMap[code] = {
             work_item_code: code,
             work_item_name: entry.work_items.name,
+            work_item_id: entry.work_items.id,
             completed_quantity: 0,
-            flats: []
+            flats: {}
           }
         }
-        // Sum the quantity_completed (handles 0.5 for joint refuge bathrooms)
-        if (!workItemMap[code].flats.includes(entry.flat_id)) {
-          workItemMap[code].flats.push(entry.flat_id)
+        
+        // Store per-flat quantity
+        if (!workItemMap[code].flats[entry.flat_id]) {
+          workItemMap[code].flats[entry.flat_id] = {
+            flat_id: entry.flat_id,
+            quantity: entry.quantity_completed || 1
+          }
           workItemMap[code].completed_quantity += (entry.quantity_completed || 1)
         }
       })
@@ -667,12 +688,22 @@ function CreateProformaModal({ onClose, onSuccess }) {
         const workItem = workItems.find(w => w.id === itemId)
         if (!workItem) return null
         
-        const completedFlats = completedWork.filter(w => w.work_item_code === workItem.code)
-        const totalQty = completedFlats.reduce((sum, f) => sum + (f.completed_quantity || 0), 0)
+        const completedWorkItem = completedWork.find(w => w.work_item_code === workItem.code)
+        if (!completedWorkItem) return null
+        
+        // Get selected flats for this work item
+        const selectedFlatIds = formData.selectedFlats[itemId] || []
+        
+        // Calculate total quantity only for selected flats
+        const totalQty = selectedFlatIds.reduce((sum, flatId) => {
+          const flatData = completedWorkItem.flats[flatId]
+          return sum + (flatData?.quantity || 0)
+        }, 0)
+        
         const amount = totalQty * (workItem.rate_per_unit || 0)
-        return { workItem, totalQty, amount }
+        return { workItem, totalQty, amount, selectedFlatIds }
       })
-      .filter(item => item !== null)
+      .filter(item => item !== null && item.totalQty > 0)
 
     const baseAmount = selectedItems.reduce((sum, item) => sum + item.amount, 0)
     const cgstAmount = (baseAmount * formData.cgstRate) / 100
@@ -856,68 +887,168 @@ function CreateProformaModal({ onClose, onSuccess }) {
 
           {step === 2 && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-neutral-800 dark:text-dark-text">Select Work Items</h3>
+              <h3 className="text-lg font-semibold text-neutral-800 dark:text-dark-text">Select Work Items & Flats</h3>
               
               {!formData.configVersionId ? (
                 <div className="text-center py-8 text-neutral-600 dark:text-dark-muted">
                   Please select a config version first
                 </div>
               ) : (
-                <div className="space-y-2 max-h-96 overflow-y-auto">
+                <div className="space-y-4 max-h-[500px] overflow-y-auto">
                   {workItems.filter(item => {
                     // Only show items with completed work
-                    const completedFlats = completedWork.filter(w => w.work_item_code === item.code)
-                    const totalQty = completedFlats.reduce((sum, f) => sum + (f.completed_quantity || 0), 0)
-                    return totalQty > 0
+                    const completedWorkItem = completedWork.find(w => w.work_item_code === item.code)
+                    return completedWorkItem && Object.keys(completedWorkItem.flats).length > 0
                   }).map(item => {
-                    const completedFlats = completedWork.filter(w => w.work_item_code === item.code)
-                    const totalQty = completedFlats.reduce((sum, f) => sum + (f.completed_quantity || 0), 0)
+                    const completedWorkItem = completedWork.find(w => w.work_item_code === item.code)
                     const isSelected = formData.selectedWorkItems.includes(item.id)
                     const ratePerUnit = item.rate_per_unit || 0
-                    const amount = totalQty * ratePerUnit
+                    
+                    // Calculate totals for selected flats
+                    const selectedFlatIds = formData.selectedFlats[item.id] || []
+                    const selectedQty = selectedFlatIds.reduce((sum, flatId) => {
+                      const flatData = completedWorkItem.flats[flatId]
+                      return sum + (flatData?.quantity || 0)
+                    }, 0)
+                    const selectedAmount = selectedQty * ratePerUnit
+
+                    // Get all flats for this work item
+                    const allFlatIds = Object.keys(completedWorkItem.flats)
+                    const allSelected = selectedFlatIds.length === allFlatIds.length && allFlatIds.length > 0
 
                     return (
-                      <label
+                      <div
                         key={item.id}
-                        className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                        className={`border-2 rounded-xl transition-all ${
                           isSelected
                             ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                            : 'border-neutral-200 dark:border-dark-border hover:border-primary-300'
+                            : 'border-neutral-200 dark:border-dark-border'
                         }`}
                       >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setFormData({
-                                ...formData,
-                                selectedWorkItems: [...formData.selectedWorkItems, item.id]
-                              })
-                            } else {
-                              setFormData({
-                                ...formData,
-                                selectedWorkItems: formData.selectedWorkItems.filter(id => id !== item.id)
-                              })
-                            }
-                          }}
-                          className="w-5 h-5"
-                        />
-                        <div className="flex-1">
-                          <p className="font-medium text-neutral-800 dark:text-dark-text">
-                            {item.code} - {item.name}
-                          </p>
-                          <p className="text-sm text-neutral-600 dark:text-dark-muted">
-                            {totalQty.toFixed(2)} {item.unit || 'units'} × ₹{ratePerUnit.toLocaleString('en-IN')} = ₹{amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                          </p>
-                        </div>
-                      </label>
+                        {/* Work Item Header */}
+                        <label className="flex items-center gap-3 p-4 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                // Add work item and auto-select all flats
+                                setFormData({
+                                  ...formData,
+                                  selectedWorkItems: [...formData.selectedWorkItems, item.id],
+                                  selectedFlats: {
+                                    ...formData.selectedFlats,
+                                    [item.id]: allFlatIds
+                                  }
+                                })
+                              } else {
+                                // Remove work item and deselect all flats
+                                setFormData({
+                                  ...formData,
+                                  selectedWorkItems: formData.selectedWorkItems.filter(id => id !== item.id),
+                                  selectedFlats: {
+                                    ...formData.selectedFlats,
+                                    [item.id]: []
+                                  }
+                                })
+                              }
+                            }}
+                            className="w-5 h-5"
+                          />
+                          <div className="flex-1">
+                            <p className="font-semibold text-neutral-800 dark:text-dark-text">
+                              {item.code} - {item.name}
+                            </p>
+                            <p className="text-sm text-neutral-600 dark:text-dark-muted">
+                              {isSelected ? (
+                                <>
+                                  Selected: {selectedQty.toFixed(2)} {item.unit || 'units'} × ₹{ratePerUnit.toLocaleString('en-IN')} = ₹{selectedAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                </>
+                              ) : (
+                                <>
+                                  {completedWorkItem.completed_quantity.toFixed(2)} {item.unit || 'units'} available across {allFlatIds.length} flat(s)
+                                </>
+                              )}
+                            </p>
+                          </div>
+                        </label>
+
+                        {/* Flat Selection (shown when work item is selected) */}
+                        {isSelected && (
+                          <div className="border-t border-neutral-300 dark:border-dark-border bg-white dark:bg-dark-card p-4 space-y-2">
+                            <div className="flex items-center justify-between mb-3">
+                              <p className="text-sm font-medium text-neutral-700 dark:text-dark-text">
+                                Select Flats to Include:
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormData({
+                                    ...formData,
+                                    selectedFlats: {
+                                      ...formData.selectedFlats,
+                                      [item.id]: allSelected ? [] : allFlatIds
+                                    }
+                                  })
+                                }}
+                                className="text-xs px-3 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-lg hover:bg-primary-200 dark:hover:bg-primary-900/50 transition-colors"
+                              >
+                                {allSelected ? 'Deselect All' : 'Select All'}
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                              {allFlatIds.map(flatId => {
+                                const flatData = completedWorkItem.flats[flatId]
+                                const flatInfo = flatDetails[flatId]
+                                const isFlatSelected = selectedFlatIds.includes(flatId)
+                                
+                                return (
+                                  <label
+                                    key={flatId}
+                                    className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
+                                      isFlatSelected
+                                        ? 'bg-primary-100 dark:bg-primary-900/30 border-primary-400 dark:border-primary-700'
+                                        : 'bg-neutral-50 dark:bg-dark-hover border-neutral-200 dark:border-dark-border hover:border-primary-300'
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isFlatSelected}
+                                      onChange={(e) => {
+                                        const newSelectedFlats = e.target.checked
+                                          ? [...selectedFlatIds, flatId]
+                                          : selectedFlatIds.filter(id => id !== flatId)
+                                        
+                                        setFormData({
+                                          ...formData,
+                                          selectedFlats: {
+                                            ...formData.selectedFlats,
+                                            [item.id]: newSelectedFlats
+                                          }
+                                        })
+                                      }}
+                                      className="w-4 h-4"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-neutral-800 dark:text-dark-text truncate">
+                                        {flatInfo?.wing_code || ''}-{flatInfo?.floor_number || ''}-{flatInfo?.flat_number || flatId}
+                                      </p>
+                                      <p className="text-xs text-neutral-600 dark:text-dark-muted">
+                                        {flatData?.quantity?.toFixed(2)} {item.unit}
+                                      </p>
+                                    </div>
+                                  </label>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )
                   })}
                   {workItems.filter(item => {
-                    const completedFlats = completedWork.filter(w => w.work_item_code === item.code)
-                    const totalQty = completedFlats.reduce((sum, f) => sum + (f.completed_quantity || 0), 0)
-                    return totalQty > 0
+                    const completedWorkItem = completedWork.find(w => w.work_item_code === item.code)
+                    return completedWorkItem && Object.keys(completedWorkItem.flats).length > 0
                   }).length === 0 && (
                     <div className="text-center py-8 text-neutral-600 dark:text-dark-muted">
                       <p className="font-medium mb-2">No completed work items found</p>
@@ -945,22 +1076,35 @@ function CreateProformaModal({ onClose, onSuccess }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-200 dark:divide-dark-border">
-                    {selectedItems.map((item, idx) => (
-                      <tr key={idx}>
-                        <td className="px-4 py-3 text-sm text-neutral-800 dark:text-dark-text">
-                          {item.workItem.code} - {item.workItem.name}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-right text-neutral-800 dark:text-dark-text">
-                          {item.totalQty.toFixed(2)} {item.workItem.unit}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-right text-neutral-800 dark:text-dark-text">
-                          ₹{item.workItem.rate_per_unit.toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-right font-medium text-neutral-800 dark:text-dark-text">
-                          ₹{item.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    ))}
+                    {selectedItems.map((item, idx) => {
+                      // Get flat details for display
+                      const flatList = item.selectedFlatIds.map(flatId => {
+                        const flatInfo = flatDetails[flatId]
+                        return flatInfo ? `${flatInfo.wing_code}-${flatInfo.floor_number}-${flatInfo.flat_number}` : flatId
+                      }).join(', ')
+                      
+                      return (
+                        <tr key={idx}>
+                          <td className="px-4 py-3 text-sm text-neutral-800 dark:text-dark-text">
+                            <div>
+                              <p className="font-medium">{item.workItem.code} - {item.workItem.name}</p>
+                              <p className="text-xs text-neutral-600 dark:text-dark-muted mt-1">
+                                Flats: {flatList}
+                              </p>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-neutral-800 dark:text-dark-text">
+                            {item.totalQty.toFixed(2)} {item.workItem.unit}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-neutral-800 dark:text-dark-text">
+                            ₹{item.workItem.rate_per_unit.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-medium text-neutral-800 dark:text-dark-text">
+                            ₹{item.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                   <tfoot className="bg-neutral-50 dark:bg-dark-hover">
                     <tr>
@@ -1041,7 +1185,17 @@ function CreateProformaModal({ onClose, onSuccess }) {
           
           <button
             onClick={() => step < 3 ? setStep(step + 1) : handleSubmit()}
-            disabled={loading || (step === 1 && (!formData.projectId || !formData.configVersionId)) || (step === 2 && formData.selectedWorkItems.length === 0)}
+            disabled={
+              loading || 
+              (step === 1 && (!formData.projectId || !formData.configVersionId)) || 
+              (step === 2 && (
+                formData.selectedWorkItems.length === 0 || 
+                !formData.selectedWorkItems.some(itemId => {
+                  const selectedFlats = formData.selectedFlats[itemId] || []
+                  return selectedFlats.length > 0
+                })
+              ))
+            }
             className="px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {loading ? (

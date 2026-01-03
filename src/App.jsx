@@ -7,6 +7,10 @@ import VisualProgress from './pages/VisualProgress'
 import DailyProgress from './pages/DailyProgress'
 import BulkUpdate from './pages/BulkUpdate'
 import Billing from './pages/Billing'
+import Workers from './pages/Workers'
+import DailyAttendance from './pages/DailyAttendance'
+import Settlements from './pages/Settlements'
+import LabourReports from './pages/LabourReports'
 import Settings from './pages/Settings'
 import Layout from './components/Layout'
 
@@ -25,6 +29,10 @@ function App() {
               <Route path="/daily-progress" element={<DailyProgress />} />
               <Route path="/bulk-update" element={<BulkUpdate />} />
               <Route path="/billing" element={<Billing />} />
+              <Route path="/workers" element={<Workers />} />
+              <Route path="/daily-attendance" element={<DailyAttendance />} />
+              <Route path="/settlements" element={<Settlements />} />
+              <Route path="/labour-reports" element={<LabourReports />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
           </Route>
