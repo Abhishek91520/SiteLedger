@@ -283,10 +283,9 @@ export default function VisualProgress() {
         .from('flats')
         .select(`
           id, flat_number, bhk_type, is_refuge, is_joint_refuge,
-          floors!inner(id, floor_number, wing_id),
-          wings!floors.wing_id!inner(id, code, name)
+          floors!inner(id, floor_number, wing_id, wings!inner(id, code, name))
         `)
-        .order('wings.code, floors.floor_number, flat_number')
+        .order('flat_number')
 
       if (!flatsData || flatsData.length === 0) {
         setWings([])
@@ -467,7 +466,7 @@ export default function VisualProgress() {
       // Group flats by wing and floor
       const wingsMap = {}
       flatsWithCompletion.forEach(flat => {
-        const wing = flat.wings
+        const wing = flat.floors.wings
         const floor = flat.floors
         
         if (!wingsMap[wing.id]) {
