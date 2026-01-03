@@ -317,7 +317,7 @@ export default function Settlements() {
                       <h3 className="text-lg font-bold text-neutral-800 dark:text-dark-text">
                         {worker.full_name}
                       </h3>
-                      <span className="px-2 py-1 bg-neutral-100 dark:bg-dark-hover rounded-lg text-xs font-medium">
+                      <span className="px-2 py-1 bg-neutral-100 dark:bg-dark-hover rounded-lg text-xs font-medium text-neutral-700 dark:text-neutral-300">
                         {worker.category}
                       </span>
                       {worker.has_settlements && (
