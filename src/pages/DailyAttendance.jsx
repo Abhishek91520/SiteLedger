@@ -7,9 +7,9 @@ import { useAuth } from '../context/AuthContext'
 
 const ATTENDANCE_TYPES = [
   { value: 'P', label: 'P', multiplier: 1.0, color: 'green' },
-  { value: 'H', label: 'H', multiplier: 0.5, color: 'yellow' },
+  { value: 'H', label: 'H', multiplier: 0.5, color: 'red' },
   { value: 'P+¼', label: 'P+¼', multiplier: 1.25, color: 'blue' },
-  { value: 'P+½', label: 'P+½', multiplier: 1.5, color: 'indigo' },
+  { value: 'P+½', label: 'P+½', multiplier: 1.5, color: 'blue' },
   { value: 'P+P', label: 'P+P', multiplier: 2.0, color: 'purple' },
   { value: 'A', label: 'A', multiplier: 0, color: 'red' }
 ]
@@ -474,10 +474,7 @@ export default function DailyAttendance() {
                                 : type.color === 'indigo' ? '#4f46e5'
                                 : type.color === 'purple' ? '#9333ea'
                                 : '#dc2626'
-                                : (type.value === 'H' ? '#9f8c00' : type.value === 'P+½' ? '#c7d2fe' : undefined),
-                              color: selectedType === type.value 
-                                ? '#ffffff'
-                                : (type.value === 'H' ? '#854d0e' : type.value === 'P+½' ? '#3730a3' : undefined)
+                                : undefined
                             }}
                           >
                             {type.label}
@@ -504,7 +501,7 @@ export default function DailyAttendance() {
                             </p>
                           )}
                         </div>
-                      )}
+                      )}    
 
                       {/* Remarks */}
                       {selectedType && (
