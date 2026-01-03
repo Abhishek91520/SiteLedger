@@ -53,10 +53,10 @@ export default function Layout() {
       )}
 
       {/* Mobile Sidebar */}
-      <aside className={`md:hidden fixed top-0 left-0 bottom-0 w-72 bg-gradient-to-b from-primary-600 via-primary-700 to-primary-800 dark:from-dark-card dark:via-dark-card dark:to-dark-bg text-white shadow-2xl z-50 transform transition-transform duration-300 ${
+      <aside className={`md:hidden fixed top-0 left-0 bottom-0 w-72 bg-gradient-to-b from-primary-600 via-primary-700 to-primary-800 dark:from-dark-card dark:via-dark-card dark:to-dark-bg text-white shadow-2xl z-50 transform transition-transform duration-300 flex flex-col ${
         mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
-        <div className="p-6 border-b border-white/10 flex items-center justify-between">
+        <div className="p-6 border-b border-white/10 flex items-center justify-between flex-shrink-0">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">SiteLedger</h1>
             <p className="text-primary-200 text-xs mt-1 font-medium">Abhimanyu Tiling Works</p>
@@ -66,7 +66,7 @@ export default function Layout() {
           </button>
         </div>
 
-        <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+        <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
           {navItems.map((item) => (
             <NavLink
               key={item.path}
@@ -92,7 +92,7 @@ export default function Layout() {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-white/10 absolute bottom-0 left-0 right-0">
+        <div className="p-4 border-t border-white/10 flex-shrink-0">
           <button
             onClick={() => {
               setMobileMenuOpen(false)
