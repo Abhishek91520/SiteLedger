@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Calendar, Save, AlertCircle, Check, ChevronLeft, ChevronRight } from 'lucide-react'
-import { format, subDays, addDays, isToday, isFuture, parseISO, startOfDay } from 'date-fns'
+import { Calendar, Save, AlertCircle, Check, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { format, subDays, addDays, isToday, isFuture, parseISO, startOfDay, addMonths, subMonths, startOfMonth } from 'date-fns'
 import { useTheme } from '../context/ThemeContext'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -64,6 +64,24 @@ export default function DailyAttendance() {
     if (!isFuture(newDate)) {
       setSelectedDate(format(newDate, 'yyyy-MM-dd'))
     }
+  }
+
+  const navigateMonth = (direction) => {
+    const currentDate = parseISO(selectedDate)
+    const newDate = direction === 'next' ? addMonths(currentDate, 1) : subMonths(currentDate, 1)
+    const newDateStr = format(startOfMonth(newDate), 'yyyy-MM-dd')
+    const today = format(new Date(), 'yyyy-MM-dd')
+    
+    // Don't go beyond today when navigating forward
+    if (direction === 'next' && newDateStr > today) {
+      setSelectedDate(today)
+    } else {
+      setSelectedDate(newDateStr)
+    }
+  }
+
+  const goToToday = () => {
+    setSelectedDate(format(new Date(), 'yyyy-MM-dd'))
   }
 
   useEffect(() => {
@@ -323,6 +341,36 @@ export default function DailyAttendance() {
             <Calendar size={24} />
             Daily Attendance
           </h1>
+          
+          {/* Month/Year Navigation & Today Button */}
+          <div className="flex items-center justify-between mb-3 gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigateMonth('prev')}
+                className="bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg p-2 transition-colors"
+                aria-label="Previous month"
+              >
+                <ChevronsLeft size={18} />
+              </button>
+              <div className="text-white font-semibold text-sm sm:text-base min-w-[120px] text-center">
+                {format(parseISO(selectedDate), 'MMMM yyyy')}
+              </div>
+              <button
+                onClick={() => navigateMonth('next')}
+                disabled={selectedDate >= format(new Date(), 'yyyy-MM-dd')}
+                className="bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Next month"
+              >
+                <ChevronsRight size={18} />
+              </button>
+            </div>
+            <button
+              onClick={goToToday}
+              className="bg-white text-blue-600 hover:bg-white/90 font-medium px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors shadow-sm"
+            >
+              Today
+            </button>
+          </div>
           
           {/* Horizontal Date Picker */}
           <div className="relative">
