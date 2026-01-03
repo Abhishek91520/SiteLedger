@@ -344,6 +344,7 @@ export default function Dashboard() {
 
   const loadTopPerformingFloors = async () => {
     try {
+      // OPTIMIZED: Batch query approach (2 queries instead of 100+)
       let query = supabase
         .from('floors')
         .select(`
@@ -361,22 +362,43 @@ export default function Dashboard() {
       
       const { data: floors } = await query
 
-      const floorStats = await Promise.all((floors || []).map(async (floor) => {
-        const flatIds = floor.flats.map(f => f.id)
-        if (flatIds.length === 0) return null
+      if (!floors || floors.length === 0) {
+        setTopPerformingFloors([])
+        return
+      }
 
-        const { data: progress } = await supabase
+      // Batch load all progress and work items (2 queries instead of 100+)
+      const allFlatIds = floors.flatMap(f => f.flats.map(flat => flat.id))
+      
+      const [progressResult, workItemsResult] = await Promise.all([
+        supabase
           .from('progress_entries')
           .select('flat_id, work_item_id')
-          .in('flat_id', flatIds)
-
-        const { data: workItems } = await supabase
+          .in('flat_id', allFlatIds),
+        supabase
           .from('work_items')
           .select('id')
           .eq('is_active', true)
+      ])
 
-        const totalPossible = flatIds.length * (workItems?.length || 0)
-        const completed = new Set(progress?.map(p => `${p.flat_id}-${p.work_item_id}`) || []).size
+      const allProgress = progressResult.data || []
+      const workItems = workItemsResult.data || []
+
+      // Build progress lookup map for O(1) access
+      const progressSet = new Set(allProgress.map(p => `${p.flat_id}-${p.work_item_id}`))
+
+      // Calculate stats in memory (no more DB queries)
+      const floorStats = floors.map(floor => {
+        const flatIds = floor.flats.map(f => f.id)
+        if (flatIds.length === 0) return null
+
+        const totalPossible = flatIds.length * workItems.length
+        const completed = flatIds.reduce((count, flatId) => {
+          return count + workItems.filter(wi => 
+            progressSet.has(`${flatId}-${wi.id}`)
+          ).length
+        }, 0)
+        
         const percentage = totalPossible > 0 ? (completed / totalPossible) * 100 : 0
 
         return {
@@ -384,10 +406,9 @@ export default function Dashboard() {
           completion: Math.round(percentage),
           flats: flatIds.length
         }
-      }))
+      }).filter(s => s !== null)
 
-      const validStats = floorStats.filter(s => s !== null)
-      const sorted = validStats.sort((a, b) => b.completion - a.completion).slice(0, 10)
+      const sorted = floorStats.sort((a, b) => b.completion - a.completion).slice(0, 10)
       setTopPerformingFloors(sorted)
     } catch (error) {
       console.error('Error loading floor stats:', error)

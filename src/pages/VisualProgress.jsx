@@ -272,205 +272,229 @@ export default function VisualProgress() {
       // Load work items
       const { data: items } = await supabase
         .from('work_items')
-        .select('*')
+        .select('id, code, name, unit, is_active')
         .eq('is_active', true)
         .order('code')
 
       setWorkItems(items || [])
 
-      // Load wings with floors and flats
-      const { data: wingsData } = await supabase
-        .from('wings')
-        .select('id, code, name')
-        .order('code')
+      // OPTIMIZED: Load ALL data with joins in single query (replaces 2000+ queries)
+      const { data: flatsData } = await supabase
+        .from('flats')
+        .select(`
+          id, flat_number, bhk_type, is_refuge, is_joint_refuge,
+          floors!inner(id, floor_number, wing_id),
+          wings!floors.wing_id!inner(id, code, name)
+        `)
+        .order('wings.code, floors.floor_number, flat_number')
 
-      // Load floors for each wing
-      const wingsWithFloors = await Promise.all((wingsData || []).map(async (wing) => {
-        const { data: floors } = await supabase
-          .from('floors')
-          .select('id, floor_number, wing_id')
-          .eq('wing_id', wing.id)
-          .order('floor_number')
+      if (!flatsData || flatsData.length === 0) {
+        setWings([])
+        setLoading(false)
+        return
+      }
 
-        // Load flats for each floor
-        const floorsWithFlats = await Promise.all((floors || []).map(async (floor) => {
-          const { data: flats } = await supabase
-            .from('flats')
-            .select('*')
-            .eq('floor_id', floor.id)
-            .order('flat_number')
+      // Batch load ALL progress entries (1 query instead of 300+)
+      const flatIds = flatsData.map(f => f.id)
+      const { data: allProgressEntries } = await supabase
+        .from('progress_entries')
+        .select('flat_id, work_item_id, quantity_completed')
+        .in('flat_id', flatIds)
 
-          // Calculate completion for each flat
-          const flatsWithCompletion = await Promise.all((flats || []).map(async (flat) => {
-            // Get progress entries for this flat
-            const query = supabase
-              .from('progress_entries')
-              .select('work_item_id, quantity_completed')
-              .eq('flat_id', flat.id)
+      // Batch load notes and images counts (2 queries instead of 600+)
+      const { data: allNotes } = await supabase
+        .from('flat_notes')
+        .select('flat_id, work_item_id')
+        .in('flat_id', flatIds)
 
-            // Filter by work item if selected
-            if (selectedWorkItem !== 'ALL') {
-              const selectedItem = workItems.find(item => item.code === selectedWorkItem)
-              if (selectedItem) {
-                query.eq('work_item_id', selectedItem.id)
-              }
-            }
+      const { data: allImages } = await supabase
+        .from('flat_images')
+        .select('flat_id, work_item_id')
+        .in('flat_id', flatIds)
 
-            const { data: entries } = await query
+      // Load ALL configs once and cache (1 query instead of 300+)
+      const { data: allConfigs } = await supabase
+        .from('work_item_detail_config')
+        .select('id, work_item_code, requires_bhk_type, detail_name, is_active')
+        .eq('is_active', true)
 
-            // Load notes and images count for this flat - filtered by selected work item
-            let notesCount = 0
-            let imagesCount = 0
-            
-            if (selectedWorkItem !== 'ALL') {
-              const selectedItem = workItems.find(item => item.code === selectedWorkItem)
-              if (selectedItem) {
-                const { count: notes } = await supabase
-                  .from('flat_notes')
-                  .select('*', { count: 'exact', head: true })
-                  .eq('flat_id', flat.id)
-                  .eq('work_item_id', selectedItem.id)
+      // Batch load ALL detail checks (1 query instead of 2000+)
+      const { data: allDetailChecks } = await supabase
+        .from('work_item_details_progress')
+        .select('flat_id, work_item_id, detail_config_id, is_completed')
+        .in('flat_id', flatIds)
 
-                const { count: images } = await supabase
-                  .from('flat_images')
-                  .select('*', { count: 'exact', head: true })
-                  .eq('flat_id', flat.id)
-                  .eq('work_item_id', selectedItem.id)
-                
-                notesCount = notes || 0
-                imagesCount = images || 0
-              }
-            }
+      // Build lookup maps for O(1) access
+      const progressByFlat = {}
+      allProgressEntries?.forEach(entry => {
+        if (!progressByFlat[entry.flat_id]) progressByFlat[entry.flat_id] = []
+        progressByFlat[entry.flat_id].push(entry)
+      })
 
-            // Helper function to get applicable configs for a flat
-            const getApplicableConfigs = async (workItemCode, bhkType, isRefuge, isJointRefuge) => {
-              const { data: configs } = await supabase
-                .from('work_item_detail_config')
-                .select('id')
-                .eq('work_item_code', workItemCode)
-                .eq('is_active', true)
+      const notesByFlatWorkItem = {}
+      allNotes?.forEach(note => {
+        const key = `${note.flat_id}-${note.work_item_id}`
+        notesByFlatWorkItem[key] = (notesByFlatWorkItem[key] || 0) + 1
+      })
 
-              if (!configs) return []
+      const imagesByFlatWorkItem = {}
+      allImages?.forEach(image => {
+        const key = `${image.flat_id}-${image.work_item_id}`
+        imagesByFlatWorkItem[key] = (imagesByFlatWorkItem[key] || 0) + 1
+      })
 
-              // Filter by BHK type if required
-              let filtered = configs.filter(config => {
-                if (!config.requires_bhk_type) return true
-                return config.requires_bhk_type === bhkType
-              })
+      const detailChecksByFlat = {}
+      allDetailChecks?.forEach(check => {
+        const key = `${check.flat_id}-${check.work_item_id}`
+        if (!detailChecksByFlat[key]) detailChecksByFlat[key] = []
+        detailChecksByFlat[key].push(check)
+      })
 
-              // Special handling for Work Item D (Bathrooms)
-              if (workItemCode === 'D') {
-                // Refugee flats (non-joint) only have common bathroom
-                if (isRefuge === true && isJointRefuge !== true) {
-                  // For refuge flats, we need to get the Common Bathroom config
-                  const { data: allConfigs } = await supabase
-                    .from('work_item_detail_config')
-                    .select('*')
-                    .eq('work_item_code', 'D')
-                    .eq('is_active', true)
-                  
-                  filtered = allConfigs.filter(c => c.detail_name === 'Common Bathroom')
-                }
-              }
+      // Helper function to get applicable configs (in-memory, no DB calls)
+      const getApplicableConfigs = (workItemCode, bhkType, isRefuge, isJointRefuge) => {
+        let filtered = allConfigs.filter(c => c.work_item_code === workItemCode)
 
-              return filtered.map(c => c.id)
-            }
+        // Filter by BHK type if required
+        filtered = filtered.filter(config => {
+          if (!config.requires_bhk_type) return true
+          return config.requires_bhk_type === bhkType
+        })
 
-            // Calculate completion percentage based on detail checks
-            let completion_percentage = 0
-
-            if (selectedWorkItem === 'ALL') {
-              // All work items - average completion across all work items
-              const workItemCompletions = await Promise.all(workItems.map(async (item) => {
-                // Get applicable config IDs for this flat
-                const applicableConfigIds = await getApplicableConfigs(
-                  item.code, 
-                  flat.bhk_type, 
-                  flat.is_refuge, 
-                  flat.is_joint_refuge
-                )
-
-                if (applicableConfigIds.length === 0) {
-                  // No configs applicable, check progress_entries fallback
-                  const itemEntry = (entries || []).find(e => e.work_item_id === item.id)
-                  return itemEntry && itemEntry.quantity_completed > 0 ? 100 : 0
-                }
-
-                // Get detail checks ONLY for applicable configs
-                const { data: detailChecks } = await supabase
-                  .from('work_item_details_progress')
-                  .select('is_completed')
-                  .eq('flat_id', flat.id)
-                  .eq('work_item_id', item.id)
-                  .in('detail_config_id', applicableConfigIds)
-                
-                if (detailChecks && detailChecks.length > 0) {
-                  const completed = detailChecks.filter(c => c.is_completed).length
-                  return (completed / applicableConfigIds.length) * 100
-                }
-                
-                // Fallback: check progress_entries
-                const itemEntry = (entries || []).find(e => e.work_item_id === item.id)
-                return itemEntry && itemEntry.quantity_completed > 0 ? 100 : 0
-              }))
-              
-              completion_percentage = workItemCompletions.reduce((a, b) => a + b, 0) / workItems.length
-            } else {
-              // Specific work item - check detail checks for this work item
-              const selectedItem = workItems.find(item => item.code === selectedWorkItem)
-              if (selectedItem) {
-                // Get applicable config IDs for this flat
-                const applicableConfigIds = await getApplicableConfigs(
-                  selectedItem.code, 
-                  flat.bhk_type, 
-                  flat.is_refuge, 
-                  flat.is_joint_refuge
-                )
-
-                if (applicableConfigIds.length === 0) {
-                  // No configs applicable, check progress_entries fallback
-                  const hasEntry = (entries || []).some(e => e.work_item_id === selectedItem.id && e.quantity_completed > 0)
-                  completion_percentage = hasEntry ? 100 : 0
-                } else {
-                  // Get detail checks ONLY for applicable configs
-                  const { data: detailChecks } = await supabase
-                    .from('work_item_details_progress')
-                    .select('is_completed')
-                    .eq('flat_id', flat.id)
-                    .eq('work_item_id', selectedItem.id)
-                    .in('detail_config_id', applicableConfigIds)
-                  
-                  if (detailChecks && detailChecks.length > 0) {
-                    const completed = detailChecks.filter(c => c.is_completed).length
-                    completion_percentage = (completed / applicableConfigIds.length) * 100
-                  } else {
-                    // Fallback: check progress_entries
-                    const hasEntry = (entries || []).some(e => e.work_item_id === selectedItem.id && e.quantity_completed > 0)
-                    completion_percentage = hasEntry ? 100 : 0
-                  }
-                }
-              }
-            }
-
-            return {
-              ...flat,
-              completion_percentage: Math.min(100, Math.round(completion_percentage)),
-              work_items_progress: [], // Will be loaded when flat is clicked
-              notes_count: notesCount || 0,
-              images_count: imagesCount || 0
-            }
-          }))
-
-          return {
-            ...floor,
-            flats: flatsWithCompletion
+        // Special handling for Work Item D (Bathrooms)
+        if (workItemCode === 'D') {
+          if (isRefuge === true && isJointRefuge !== true) {
+            filtered = filtered.filter(c => c.detail_name === 'Common Bathroom')
           }
-        }))
+        }
+
+        return filtered.map(c => c.id)
+      }
+
+      // Process flats in memory
+      const flatsWithCompletion = flatsData.map(flat => {
+        const entries = progressByFlat[flat.id] || []
+
+        // Get notes/images count for selected work item
+        let notesCount = 0
+        let imagesCount = 0
+        
+        if (selectedWorkItem !== 'ALL') {
+          const selectedItem = items.find(item => item.code === selectedWorkItem)
+          if (selectedItem) {
+            const key = `${flat.id}-${selectedItem.id}`
+            notesCount = notesByFlatWorkItem[key] || 0
+            imagesCount = imagesByFlatWorkItem[key] || 0
+          }
+        }
+
+        // Calculate completion percentage
+        let completion_percentage = 0
+
+        if (selectedWorkItem === 'ALL') {
+          // All work items - average completion across all work items
+          const workItemCompletions = items.map(item => {
+            const applicableConfigIds = getApplicableConfigs(
+              item.code, 
+              flat.bhk_type, 
+              flat.is_refuge, 
+              flat.is_joint_refuge
+            )
+
+            if (applicableConfigIds.length === 0) {
+              const itemEntry = entries.find(e => e.work_item_id === item.id)
+              return itemEntry && itemEntry.quantity_completed > 0 ? 100 : 0
+            }
+
+            const detailChecks = detailChecksByFlat[`${flat.id}-${item.id}`] || []
+            const relevantChecks = detailChecks.filter(c => 
+              applicableConfigIds.includes(c.detail_config_id)
+            )
+            
+            if (relevantChecks.length > 0) {
+              const completed = relevantChecks.filter(c => c.is_completed).length
+              return (completed / applicableConfigIds.length) * 100
+            }
+            
+            const itemEntry = entries.find(e => e.work_item_id === item.id)
+            return itemEntry && itemEntry.quantity_completed > 0 ? 100 : 0
+          })
+          
+          completion_percentage = workItemCompletions.reduce((a, b) => a + b, 0) / items.length
+        } else {
+          // Specific work item
+          const selectedItem = items.find(item => item.code === selectedWorkItem)
+          if (selectedItem) {
+            const applicableConfigIds = getApplicableConfigs(
+              selectedItem.code, 
+              flat.bhk_type, 
+              flat.is_refuge, 
+              flat.is_joint_refuge
+            )
+
+            if (applicableConfigIds.length === 0) {
+              const hasEntry = entries.some(e => 
+                e.work_item_id === selectedItem.id && e.quantity_completed > 0
+              )
+              completion_percentage = hasEntry ? 100 : 0
+            } else {
+              const detailChecks = detailChecksByFlat[`${flat.id}-${selectedItem.id}`] || []
+              const relevantChecks = detailChecks.filter(c => 
+                applicableConfigIds.includes(c.detail_config_id)
+              )
+              
+              if (relevantChecks.length > 0) {
+                const completed = relevantChecks.filter(c => c.is_completed).length
+                completion_percentage = (completed / applicableConfigIds.length) * 100
+              } else {
+                const hasEntry = entries.some(e => 
+                  e.work_item_id === selectedItem.id && e.quantity_completed > 0
+                )
+                completion_percentage = hasEntry ? 100 : 0
+              }
+            }
+          }
+        }
 
         return {
-          ...wing,
-          floors: floorsWithFlats
+          ...flat,
+          completion_percentage: Math.min(100, Math.round(completion_percentage)),
+          work_items_progress: [],
+          notes_count: notesCount,
+          images_count: imagesCount
         }
+      })
+
+      // Group flats by wing and floor
+      const wingsMap = {}
+      flatsWithCompletion.forEach(flat => {
+        const wing = flat.wings
+        const floor = flat.floors
+        
+        if (!wingsMap[wing.id]) {
+          wingsMap[wing.id] = {
+            id: wing.id,
+            code: wing.code,
+            name: wing.name,
+            floors: {}
+          }
+        }
+        
+        if (!wingsMap[wing.id].floors[floor.id]) {
+          wingsMap[wing.id].floors[floor.id] = {
+            id: floor.id,
+            floor_number: floor.floor_number,
+            wing_id: floor.wing_id,
+            flats: []
+          }
+        }
+        
+        wingsMap[wing.id].floors[floor.id].flats.push(flat)
+      })
+
+      // Convert to array format
+      const wingsWithFloors = Object.values(wingsMap).map(wing => ({
+        ...wing,
+        floors: Object.values(wing.floors)
       }))
 
       setWings(wingsWithFloors)
@@ -482,67 +506,87 @@ export default function VisualProgress() {
   }
 
   const handleFlatClick = async (flat) => {
-    // Load detailed work item progress for this flat
+    // OPTIMIZED: Load detailed work item progress with batch queries
     try {
-      // Use flat.id (not flat.flat_id)
       const flatId = flat.id
       
-      // Helper function to get applicable configs for a flat
-      const getApplicableConfigsForFlat = async (workItemCode) => {
-        const { data: configs } = await supabase
-          .from('work_item_detail_config')
-          .select('*')
-          .eq('work_item_code', workItemCode)
-          .eq('is_active', true)
+      // Batch load all configs once (1 query instead of N)
+      const { data: allConfigsForFlat } = await supabase
+        .from('work_item_detail_config')
+        .select('id, work_item_code, requires_bhk_type, detail_name, is_active')
+        .eq('is_active', true)
 
-        if (!configs) return []
+      // Helper function to get applicable configs (in-memory filtering)
+      const getApplicableConfigsForFlat = (workItemCode) => {
+        let filtered = allConfigsForFlat.filter(c => c.work_item_code === workItemCode)
 
         // Filter by BHK type if required
-        let filtered = configs.filter(config => {
+        filtered = filtered.filter(config => {
           if (!config.requires_bhk_type) return true
           return config.requires_bhk_type === flat.bhk_type
         })
 
         // Special handling for Work Item D (Bathrooms)
         if (workItemCode === 'D') {
-          // Refugee flats (non-joint) only have common bathroom
           if (flat.is_refuge === true && flat.is_joint_refuge !== true) {
-            filtered = configs.filter(c => c.detail_name === 'Common Bathroom')
+            filtered = filtered.filter(c => c.detail_name === 'Common Bathroom')
           }
         }
 
         return filtered
       }
       
-      // Load enhanced work item progress with detailed checks
-      const workItemsProgress = await Promise.all(workItems.map(async (workItem) => {
-        const { data: itemEntries } = await supabase
+      // Batch load ALL progress entries and detail checks (2 queries instead of 2N)
+      const workItemIds = workItems.map(w => w.id)
+      
+      const [entriesResult, detailChecksResult] = await Promise.all([
+        supabase
           .from('progress_entries')
-          .select('quantity_completed, entry_date')
+          .select('work_item_id, quantity_completed, entry_date')
           .eq('flat_id', flatId)
-          .eq('work_item_id', workItem.id)
+          .in('work_item_id', workItemIds),
+        supabase
+          .from('work_item_details_progress')
+          .select(`
+            work_item_id, detail_config_id, is_completed,
+            detail_config:work_item_detail_config(*)
+          `)
+          .eq('flat_id', flatId)
+          .in('work_item_id', workItemIds)
+      ])
 
-        // Get applicable configs for this flat
-        const applicableConfigs = await getApplicableConfigsForFlat(workItem.code)
+      const allEntries = entriesResult.data || []
+      const allDetailChecks = detailChecksResult.data || []
+
+      // Build lookup maps
+      const entriesByWorkItem = {}
+      allEntries.forEach(entry => {
+        if (!entriesByWorkItem[entry.work_item_id]) {
+          entriesByWorkItem[entry.work_item_id] = []
+        }
+        entriesByWorkItem[entry.work_item_id].push(entry)
+      })
+
+      const detailChecksByWorkItem = {}
+      allDetailChecks.forEach(check => {
+        if (!detailChecksByWorkItem[check.work_item_id]) {
+          detailChecksByWorkItem[check.work_item_id] = []
+        }
+        detailChecksByWorkItem[check.work_item_id].push(check)
+      })
+
+      // Process all work items in memory
+      const workItemsProgress = workItems.map(workItem => {
+        const itemEntries = entriesByWorkItem[workItem.id] || []
+        const applicableConfigs = getApplicableConfigsForFlat(workItem.code)
         const applicableConfigIds = applicableConfigs.map(c => c.id)
 
-        // Load detailed checks ONLY for applicable configs
-        let detailChecks = []
-        if (applicableConfigIds.length > 0) {
-          const { data } = await supabase
-            .from('work_item_details_progress')
-            .select(`
-              *,
-              detail_config:work_item_detail_config(*)
-            `)
-            .eq('flat_id', flatId)
-            .eq('work_item_id', workItem.id)
-            .in('detail_config_id', applicableConfigIds)
-          
-          detailChecks = data || []
-        }
+        // Filter detail checks to only applicable configs
+        const detailChecks = (detailChecksByWorkItem[workItem.id] || []).filter(check =>
+          applicableConfigIds.includes(check.detail_config_id)
+        )
 
-        // Calculate completion based on detailed checks if available
+        // Calculate completion
         let percentage = 0
         let completedChecks = 0
         let totalChecks = applicableConfigs.length
@@ -551,8 +595,7 @@ export default function VisualProgress() {
           completedChecks = detailChecks.filter(c => c.is_completed).length
           percentage = Math.round((completedChecks / totalChecks) * 100)
         } else {
-          // Fallback to old system
-          const isCompleted = (itemEntries || []).some(e => e.quantity_completed > 0)
+          const isCompleted = itemEntries.some(e => e.quantity_completed > 0)
           percentage = isCompleted ? 100 : 0
           completedChecks = isCompleted ? 1 : 0
           totalChecks = 1
@@ -565,24 +608,27 @@ export default function VisualProgress() {
           total_quantity: totalChecks,
           unit: applicableConfigs.length > 0 ? 'checks' : 'flat',
           completion_percentage: percentage,
-          last_updated: itemEntries && itemEntries.length > 0 ? itemEntries[0].entry_date : null,
+          last_updated: itemEntries.length > 0 ? itemEntries[0].entry_date : null,
           detailed_checks: detailChecks || []
         }
-      }))
+      })
 
-      // Load flat notes with work item information
-      const { data: notes } = await supabase
-        .from('flat_notes')
-        .select('*, work_items(code, name)')
-        .eq('flat_id', flatId)
-        .order('created_at', { ascending: false })
+      // Load flat notes and images with work item information (2 queries)
+      const [notesResult, imagesResult] = await Promise.all([
+        supabase
+          .from('flat_notes')
+          .select('*, work_items(code, name)')
+          .eq('flat_id', flatId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('flat_images')
+          .select('*, work_items(code, name)')
+          .eq('flat_id', flatId)
+          .order('uploaded_at', { ascending: false })
+      ])
 
-      // Load flat images with work item information
-      const { data: images } = await supabase
-        .from('flat_images')
-        .select('*, work_items(code, name)')
-        .eq('flat_id', flatId)
-        .order('uploaded_at', { ascending: false })
+      const notes = notesResult.data || []
+      const images = imagesResult.data || []
 
       setSelectedFlat({
         ...flat,

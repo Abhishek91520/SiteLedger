@@ -26,7 +26,7 @@ export async function getProject() {
 export async function getWings() {
   const { data, error } = await supabase
     .from('wings')
-    .select('*')
+    .select('id, code, name')
     .order('code')
 
   if (error) throw error
@@ -36,7 +36,7 @@ export async function getWings() {
 export async function getFloorsByWing(wingId) {
   const { data, error } = await supabase
     .from('floors')
-    .select('*')
+    .select('id, floor_number, wing_id')
     .eq('wing_id', wingId)
     .order('floor_number')
 
@@ -47,7 +47,7 @@ export async function getFloorsByWing(wingId) {
 export async function getFlatsByFloor(floorId) {
   const { data, error } = await supabase
     .from('flats')
-    .select('*')
+    .select('id, flat_number, bhk_type, is_refuge, is_joint_refuge, floor_id')
     .eq('floor_id', floorId)
     .order('flat_number')
 
@@ -82,7 +82,7 @@ export async function getFlatsByWing(wingCode) {
 export async function getActiveConfigVersion() {
   const { data, error } = await supabase
     .from('config_versions')
-    .select('*')
+    .select('id, version_number, effective_date, is_active')
     .eq('is_active', true)
     .single()
 
@@ -93,7 +93,7 @@ export async function getActiveConfigVersion() {
 export async function getWorkItems(configVersionId) {
   const { data, error } = await supabase
     .from('work_items')
-    .select('*')
+    .select('id, code, name, unit, rate, total_quantity, config_version_id, is_active')
     .eq('config_version_id', configVersionId)
     .eq('is_active', true)
     .order('code')
@@ -195,7 +195,7 @@ export async function getUnbilledProgressEntries() {
 export async function getProformaInvoices() {
   const { data, error } = await supabase
     .from('proforma_invoices')
-    .select('*')
+    .select('id, invoice_number, invoice_date, due_date, subtotal, tax_amount, total_amount, status')
     .order('invoice_date', { ascending: false })
 
   if (error) throw error
