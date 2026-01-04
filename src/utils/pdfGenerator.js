@@ -53,7 +53,7 @@ export function generateProformaPDF(invoice, items, project) {
   doc.setFont('helvetica', 'bold')
   doc.text('Status:', 15, yPos)
   doc.setFont('helvetica', 'normal')
-  doc.text(invoice.status.toUpperCase(), 50, yPos)
+  doc.text(invoice.status?.toUpperCase() || 'N/A', 50, yPos)
   
   // Right side - Project details
   yPos = 60
