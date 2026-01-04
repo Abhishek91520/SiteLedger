@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext'
 
 const ATTENDANCE_TYPES = [
   { value: 'P', label: 'P (Present)', multiplier: 1.0 },
-  { value: 'H', label: 'H (Half Day)', multiplier: 0.5 },
+  { value: '½', label: '½ (Half Day)', multiplier: 0.5 },
   { value: 'P+¼', label: 'P+¼ (1.25x)', multiplier: 1.25 },
   { value: 'P+½', label: 'P+½ (1.5x)', multiplier: 1.5 },
   { value: 'P+P', label: 'P+P (Double)', multiplier: 2.0 },

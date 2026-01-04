@@ -26,6 +26,7 @@ export default function Dashboard() {
   const [completionTimeline, setCompletionTimeline] = useState([])
   const [topPerformingFloors, setTopPerformingFloors] = useState([])
   const [documentationStats, setDocumentationStats] = useState({ withNotes: 0, withImages: 0, withBoth: 0, noDocs: 0 })
+  const [workerStats, setWorkerStats] = useState([])
   const [overallStats, setOverallStats] = useState({
     totalFlats: 0,
     completedFlats: 0,
@@ -75,6 +76,9 @@ export default function Dashboard() {
       // Load wing progress
       const wingData = await loadWingProgress()
       setWingProgress(wingData)
+
+      // Load worker stats
+      await loadWorkerStats()
 
       // Load recent entries
       await loadRecentEntries()
@@ -203,6 +207,34 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Error loading wing progress:', error)
       return []
+    }
+  }
+
+  const loadWorkerStats = async () => {
+    try {
+      const { data: workers, error } = await supabase
+        .from('workers')
+        .select('category')
+        .eq('status', 'active')
+
+      if (error) throw error
+
+      const categoryCounts = workers.reduce((acc, worker) => {
+        const category = worker.category || 'Other'
+        acc[category] = (acc[category] || 0) + 1
+        return acc
+      }, {})
+
+      const workerData = Object.entries(categoryCounts).map(([name, value]) => ({
+        name,
+        value,
+        percentage: workers.length > 0 ? Math.round((value / workers.length) * 100) : 0
+      }))
+
+      setWorkerStats(workerData)
+    } catch (error) {
+      console.error('Error loading worker stats:', error)
+      setWorkerStats([])
     }
   }
 
@@ -968,34 +1000,43 @@ export default function Dashboard() {
             </ResponsiveContainer>
           </ChartCard>
 
-          {/* Wing Progress Pie Chart */}
-          <ChartCard title="Progress by Wing" delay={0.5}>
-            <ResponsiveContainer width="100%" height={240}>
-              <PieChart>
-                <Pie
-                  data={wingProgress}
-                  dataKey="withProgress"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={100}
-                  label={(entry) => `${entry.name}: ${entry.completion}%`}
-                  labelStyle={{ fill: isDark ? '#F1F5F9' : '#262626', fontSize: '12px', fontWeight: 'bold' }}
-                >
-                  {wingProgress.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={WING_COLORS[index % WING_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
-                    border: `1px solid ${isDark ? '#334155' : '#E5E5E5'}`,
-                    borderRadius: '12px',
-                    color: isDark ? '#F1F5F9' : '#262626'
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+          {/* Worker Distribution Pie Chart */}
+          <ChartCard title="Active Workers Distribution" delay={0.5}>
+            {workerStats.length > 0 ? (
+              <ResponsiveContainer width="100%" height={240}>
+                <PieChart>
+                  <Pie
+                    data={workerStats}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={100}
+                    label={(entry) => `${entry.name}: ${entry.value} (${entry.percentage}%)`}
+                    labelStyle={{ fill: isDark ? '#F1F5F9' : '#262626', fontSize: '12px', fontWeight: 'bold' }}
+                  >
+                    {workerStats.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={entry.name === 'Mason' ? '#F59E0B' : entry.name === 'Helper' ? '#3B82F6' : '#8B5CF6'} 
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                      border: `1px solid ${isDark ? '#334155' : '#E5E5E5'}`,
+                      borderRadius: '12px',
+                      color: isDark ? '#F1F5F9' : '#262626'
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[240px] flex items-center justify-center text-neutral-500 dark:text-dark-muted">
+                <p>No active workers found</p>
+              </div>
+            )}
           </ChartCard>
         </div>
 

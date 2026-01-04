@@ -8,7 +8,7 @@ import WorkerMonthlyModal from '../components/WorkerMonthlyModal'
 
 const ATTENDANCE_TYPES = [
   { value: 'P', label: 'P', multiplier: 1.0, color: 'green' },
-  { value: 'H', label: 'H', multiplier: 0.5, color: 'red' },
+  { value: '½', label: '½', multiplier: 0.5, color: 'red' },
   { value: 'P+¼', label: 'P+¼', multiplier: 1.25, color: 'blue' },
   { value: 'P+½', label: 'P+½', multiplier: 1.5, color: 'blue' },
   { value: 'P+P', label: 'P+P', multiplier: 2.0, color: 'purple' },
