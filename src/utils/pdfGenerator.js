@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf'
-import 'jspdf-autotable'
+import autoTable from 'jspdf-autotable'
 import { amountToWords, formatCurrency } from './amountToWords'
 
 /**
@@ -73,7 +73,7 @@ export function generateProformaPDF(invoice, items, project) {
     formatCurrency(item.amount || 0)
   ])
   
-  doc.autoTable({
+  autoTable(doc, {
     startY: yPos,
     head: [['Code', 'Work Item', 'Quantity', 'Rate', 'Amount']],
     body: tableData,
@@ -235,7 +235,7 @@ export function generateTaxInvoicePDF(invoice, items, project, proforma) {
     formatCurrency(item.amount || 0)
   ])
   
-  doc.autoTable({
+  autoTable(doc, {
     startY: yPos,
     head: [['Code', 'Work Item', 'Quantity', 'Rate', 'Amount']],
     body: tableData,

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FileText, Receipt, Plus, Eye, Download, X, CheckCircle, AlertCircle } from 'lucide-react'
+import { FileText, Receipt, Plus, Eye, Download, X, CheckCircle, AlertCircle, Pencil } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -64,6 +64,7 @@ function ProformaInvoices() {
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [editingInvoice, setEditingInvoice] = useState(null)
 
   useEffect(() => {
     loadInvoices()
@@ -90,7 +91,26 @@ function ProformaInvoices() {
 
   const handleCreateSuccess = () => {
     setShowCreateModal(false)
+    setEditingInvoice(null)
     loadInvoices()
+  }
+
+  const handleEditInvoice = async (invoice) => {
+    try {
+      // Load invoice items
+      const { data: items, error } = await supabase
+        .from('proforma_invoice_items')
+        .select('*, work_items(*)')
+        .eq('proforma_invoice_id', invoice.id)
+      
+      if (error) throw error
+      
+      setEditingInvoice({ ...invoice, items: items || [] })
+      setShowCreateModal(true)
+    } catch (error) {
+      console.error('Error loading invoice for edit:', error)
+      alert('Failed to load invoice for editing. Please try again.')
+    }
   }
 
   const handleDownloadPDF = async (invoice) => {
@@ -244,6 +264,13 @@ function ProformaInvoices() {
                 </div>
                 <div className="flex gap-2">
                   <button 
+                    onClick={() => handleEditInvoice(invoice)}
+                    className="p-2 hover:bg-neutral-100 dark:hover:bg-dark-hover rounded-lg transition-colors"
+                    title="Edit Invoice"
+                  >
+                    <Pencil size={20} className="text-neutral-600 dark:text-dark-muted" />
+                  </button>
+                  <button 
                     onClick={() => handlePreviewPDF(invoice)}
                     className="p-2 hover:bg-neutral-100 dark:hover:bg-dark-hover rounded-lg transition-colors"
                     title="Preview PDF"
@@ -266,8 +293,12 @@ function ProformaInvoices() {
 
       {showCreateModal && (
         <CreateProformaModal
-          onClose={() => setShowCreateModal(false)}
+          onClose={() => {
+            setShowCreateModal(false)
+            setEditingInvoice(null)
+          }}
           onSuccess={handleCreateSuccess}
+          editingInvoice={editingInvoice}
         />
       )}
     </div>
@@ -511,21 +542,22 @@ function TaxInvoices() {
 }
 
 // Create Proforma Invoice Modal Component
-function CreateProformaModal({ onClose, onSuccess }) {
+function CreateProformaModal({ onClose, onSuccess, editingInvoice }) {
   const { user } = useAuth()
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const isEditing = !!editingInvoice
   
   const [formData, setFormData] = useState({
-    projectId: '',
-    configVersionId: '',
-    invoiceDate: new Date().toISOString().split('T')[0],
+    projectId: editingInvoice?.project_id || '',
+    configVersionId: editingInvoice?.config_version_id || '',
+    invoiceDate: editingInvoice?.invoice_date || new Date().toISOString().split('T')[0],
     selectedWorkItems: [],
     selectedFlats: {}, // { workItemId: [flatId1, flatId2, ...] }
-    cgstRate: 9,
-    sgstRate: 9,
-    remarks: ''
+    cgstRate: editingInvoice?.cgst_rate || 9,
+    sgstRate: editingInvoice?.sgst_rate || 9,
+    remarks: editingInvoice?.remarks || ''
   })
 
   const [projects, setProjects] = useState([])
@@ -724,51 +756,94 @@ function CreateProformaModal({ onClose, onSuccess }) {
 
       const { selectedItems, baseAmount, cgstAmount, sgstAmount, total } = calculateTotals()
 
-      // Generate invoice number
-      const { data: lastInvoice } = await supabase
-        .from('proforma_invoices')
-        .select('invoice_number')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
+      if (isEditing) {
+        // Update existing invoice
+        const { error: invoiceError } = await supabase
+          .from('proforma_invoices')
+          .update({
+            invoice_date: formData.invoiceDate,
+            project_id: formData.projectId,
+            config_version_id: formData.configVersionId,
+            base_amount: baseAmount,
+            cgst_amount: cgstAmount,
+            sgst_amount: sgstAmount,
+            total_amount: total,
+            remarks: formData.remarks
+          })
+          .eq('id', editingInvoice.id)
 
-      const lastNum = lastInvoice ? parseInt(lastInvoice.invoice_number.split('-')[1]) : 0
-      const invoiceNumber = `PI-${String(lastNum + 1).padStart(4, '0')}`
+        if (invoiceError) throw invoiceError
 
-      // Insert invoice
-      const { data: invoice, error: invoiceError } = await supabase
-        .from('proforma_invoices')
-        .insert({
-          invoice_number: invoiceNumber,
-          invoice_date: formData.invoiceDate,
-          project_id: formData.projectId,
-          config_version_id: formData.configVersionId,
-          base_amount: baseAmount,
-          cgst_amount: cgstAmount,
-          sgst_amount: sgstAmount,
-          total_amount: total,
-          remarks: formData.remarks,
-          created_by: user.id
-        })
-        .select()
-        .single()
+        // Delete existing items
+        const { error: deleteError } = await supabase
+          .from('proforma_invoice_items')
+          .delete()
+          .eq('proforma_invoice_id', editingInvoice.id)
 
-      if (invoiceError) throw invoiceError
+        if (deleteError) throw deleteError
 
-      // Insert invoice items
-      const items = selectedItems.map(item => ({
-        proforma_invoice_id: invoice.id,
-        work_item_id: item.workItem.id,
-        quantity_billed: Math.round(item.totalQty),
-        rate: item.workItem.rate_per_unit,
-        amount: item.amount
-      }))
+        // Insert new items
+        const items = selectedItems.map(item => ({
+          proforma_invoice_id: editingInvoice.id,
+          work_item_id: item.workItem.id,
+          quantity_billed: Math.round(item.totalQty),
+          rate: item.workItem.rate_per_unit,
+          amount: item.amount
+        }))
 
-      const { error: itemsError } = await supabase
-        .from('proforma_invoice_items')
-        .insert(items)
+        const { error: itemsError } = await supabase
+          .from('proforma_invoice_items')
+          .insert(items)
 
-      if (itemsError) throw itemsError
+        if (itemsError) throw itemsError
+      } else {
+        // Create new invoice
+        // Generate invoice number
+        const { data: lastInvoice } = await supabase
+          .from('proforma_invoices')
+          .select('invoice_number')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
+
+        const lastNum = lastInvoice ? parseInt(lastInvoice.invoice_number.split('-')[1]) : 0
+        const invoiceNumber = `PI-${String(lastNum + 1).padStart(4, '0')}`
+
+        // Insert invoice
+        const { data: invoice, error: invoiceError } = await supabase
+          .from('proforma_invoices')
+          .insert({
+            invoice_number: invoiceNumber,
+            invoice_date: formData.invoiceDate,
+            project_id: formData.projectId,
+            config_version_id: formData.configVersionId,
+            base_amount: baseAmount,
+            cgst_amount: cgstAmount,
+            sgst_amount: sgstAmount,
+            total_amount: total,
+            remarks: formData.remarks,
+            created_by: user.id
+          })
+          .select()
+          .single()
+
+        if (invoiceError) throw invoiceError
+
+        // Insert invoice items
+        const items = selectedItems.map(item => ({
+          proforma_invoice_id: invoice.id,
+          work_item_id: item.workItem.id,
+          quantity_billed: Math.round(item.totalQty),
+          rate: item.workItem.rate_per_unit,
+          amount: item.amount
+        }))
+
+        const { error: itemsError } = await supabase
+          .from('proforma_invoice_items')
+          .insert(items)
+
+        if (itemsError) throw itemsError
+      }
 
       onSuccess()
     } catch (err) {
@@ -786,7 +861,9 @@ function CreateProformaModal({ onClose, onSuccess }) {
         {/* Header */}
         <div className="sticky top-0 bg-white dark:bg-dark-card border-b border-neutral-200 dark:border-dark-border p-6 flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-neutral-800 dark:text-dark-text">Create Proforma Invoice</h2>
+            <h2 className="text-2xl font-bold text-neutral-800 dark:text-dark-text">
+              {isEditing ? 'Edit' : 'Create'} Proforma Invoice
+            </h2>
             <p className="text-sm text-neutral-600 dark:text-dark-muted mt-1">Step {step} of 3</p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-neutral-100 dark:hover:bg-dark-hover rounded-lg">
