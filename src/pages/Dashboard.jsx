@@ -1003,7 +1003,7 @@ export default function Dashboard() {
           {/* Worker Distribution Pie Chart */}
           <ChartCard title="Active Workers Distribution" delay={0.5}>
             {workerStats.length > 0 ? (
-              <ResponsiveContainer width="100%" height={240}>
+              <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
                   <Pie
                     data={workerStats}
@@ -1011,9 +1011,9 @@ export default function Dashboard() {
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    outerRadius={100}
-                    label={(entry) => `${entry.name}: ${entry.value} (${entry.percentage}%)`}
-                    labelStyle={{ fill: isDark ? '#F1F5F9' : '#262626', fontSize: '12px', fontWeight: 'bold' }}
+                    outerRadius={70}
+                    label={(entry) => `${entry.name}: ${entry.value}`}
+                    labelStyle={{ fill: isDark ? '#F1F5F9' : '#262626', fontSize: '10px', fontWeight: 'bold' }}
                   >
                     {workerStats.map((entry, index) => (
                       <Cell 
@@ -1033,7 +1033,7 @@ export default function Dashboard() {
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-[240px] flex items-center justify-center text-neutral-500 dark:text-dark-muted">
+              <div className="h-[280px] flex items-center justify-center text-neutral-500 dark:text-dark-muted">
                 <p>No active workers found</p>
               </div>
             )}

@@ -312,9 +312,9 @@ export default function WorkerMonthlyModal({ worker, onClose }) {
                 </div>
 
                 <div className="grid grid-cols-4 gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border-t-2 border-blue-200 dark:border-blue-800 font-bold">
-                  <div>Total</div>
+                  <div className="text-neutral-800 dark:text-dark-text">Total</div>
                   <div className="text-center text-blue-600 dark:text-blue-400">
-                    {monthlyStats?.totalDays?.toFixed(2) || '0'} + 0L + 0OT
+                    {monthlyStats?.totalDays?.toFixed(2) || '0'}
                   </div>
                   <div className="text-right text-orange-600 dark:text-orange-400">
                     {formatCurrency(monthlyStats?.totalKharci || 0)}

@@ -5,7 +5,7 @@
 
 // Project Details
 export const PROJECT = {
-  name: 'Abhimanyu Tiling Works - Main Project',
+  name: 'Abhimanyu Tiling Works',
   contractor: 'Abhimanyu Tiling Works',
   areaSqFt: 198174,
   ratePerSqFt: 90,
