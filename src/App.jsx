@@ -11,6 +11,7 @@ import Workers from './pages/Workers'
 import DailyAttendance from './pages/DailyAttendance'
 import Settlements from './pages/Settlements'
 import LabourReports from './pages/LabourReports'
+import WorkerMonthlyDetail from './pages/WorkerMonthlyDetail'
 import Settings from './pages/Settings'
 import Layout from './components/Layout'
 
@@ -33,6 +34,7 @@ function App() {
               <Route path="/daily-attendance" element={<DailyAttendance />} />
               <Route path="/settlements" element={<Settlements />} />
               <Route path="/labour-reports" element={<LabourReports />} />
+              <Route path="/worker-monthly/:workerId" element={<WorkerMonthlyDetail />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
           </Route>

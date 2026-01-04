@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { BarChart3, Users, DollarSign, TrendingUp, Calendar, AlertCircle } from 'lucide-react'
+import { BarChart3, Users, DollarSign, TrendingUp, Calendar, AlertCircle, ChevronRight } from 'lucide-react'
 
 export default function LabourReports() {
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [projects, setProjects] = useState([])
@@ -12,6 +14,7 @@ export default function LabourReports() {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
   })
   const [stats, setStats] = useState(null)
+  const [workersList, setWorkersList] = useState([])
 
   useEffect(() => {
     fetchProjects()
@@ -90,6 +93,9 @@ export default function LabourReports() {
       // Calculate total unpaid
       const totalUnpaid = balanceData?.reduce((sum, w) => sum + parseFloat(w.unpaid_balance || 0), 0) || 0
       const workersWithBalance = balanceData?.filter(w => parseFloat(w.unpaid_balance) > 0).length || 0
+      
+      // Store workers list
+      setWorkersList(balanceData || [])
 
       // Get current month attendance data for breakdown
       const { data: attendanceData } = await supabase
@@ -317,6 +323,38 @@ export default function LabourReports() {
                       {formatCurrency(stats.currentMonthCost - stats.previousMonthCost)}
                     </span>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Workers List */}
+            {workersList.length > 0 && (
+              <div className="bg-white dark:bg-dark-card rounded-xl p-3 sm:p-4 shadow-sm">
+                <h3 className="text-sm sm:text-base font-bold text-neutral-800 dark:text-dark-text mb-2 sm:mb-3">
+                  Workers ({workersList.length})
+                </h3>
+                <div className="space-y-2">
+                  {workersList.map(worker => (
+                    <button
+                      key={worker.id}
+                      onClick={() => navigate(`/worker-monthly/${worker.id}`)}
+                      className="w-full flex items-center justify-between p-3 bg-neutral-50 dark:bg-dark-hover hover:bg-neutral-100 dark:hover:bg-dark-border rounded-lg transition-colors text-left"
+                    >
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-neutral-800 dark:text-dark-text">{worker.full_name}</h4>
+                        <p className="text-xs text-neutral-600 dark:text-dark-muted mt-0.5">{worker.category}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <p className="text-xs text-neutral-600 dark:text-dark-muted">Balance</p>
+                          <p className="font-bold text-neutral-800 dark:text-dark-text">
+                            {formatCurrency(worker.unpaid_balance)}
+                          </p>
+                        </div>
+                        <ChevronRight size={20} className="text-neutral-400" />
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
