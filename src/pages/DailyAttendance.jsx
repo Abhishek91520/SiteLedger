@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Calendar, Save, AlertCircle, Check, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { Calendar, Save, AlertCircle, Check, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, BarChart3, X } from 'lucide-react'
 import { format, subDays, addDays, isToday, isFuture, parseISO, startOfDay, addMonths, subMonths, startOfMonth } from 'date-fns'
 import { useTheme } from '../context/ThemeContext'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import WorkerMonthlyModal from '../components/WorkerMonthlyModal'
 
 const ATTENDANCE_TYPES = [
   { value: 'P', label: 'P', multiplier: 1.0, color: 'green' },
@@ -16,6 +17,7 @@ const ATTENDANCE_TYPES = [
 
 export default function DailyAttendance() {
   const { user } = useAuth()
+  const [selectedWorkerForReport, setSelectedWorkerForReport] = useState(null)
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [dateRange, setDateRange] = useState([])
   const [workers, setWorkers] = useState([])
@@ -24,6 +26,7 @@ export default function DailyAttendance() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState(null)
+  const [hasChanges, setHasChanges] = useState(false)
 
   // Generate date range using date-fns
   useEffect(() => {
@@ -152,6 +155,7 @@ export default function DailyAttendance() {
         [field]: value
       }
     }))
+    setHasChanges(true)
 
     // Fetch balance when attendance type is selected (so it's ready when they enter kharci)
     if (field === 'attendance_type' && value !== 'A') {
@@ -323,6 +327,7 @@ export default function DailyAttendance() {
       if (error) throw error
 
       setMessage({ type: 'success', text: `Saved attendance for ${records.length} worker(s)` })
+      setHasChanges(false)
       loadWorkersAndAttendance()
     } catch (error) {
       console.error('Error saving attendance:', error)
@@ -478,21 +483,30 @@ export default function DailyAttendance() {
                   {/* Worker Header */}
                   <div className="bg-gradient-to-r from-neutral-50 to-neutral-100 dark:from-dark-hover dark:to-dark-border px-4 py-3">
                     <div className="flex items-center justify-between">
-                      <div>
+                      <div className="flex-1">
                         <h3 className="font-bold text-neutral-800 dark:text-dark-text">{worker.full_name}</h3>
                         <p className="text-sm text-neutral-600 dark:text-dark-muted">
                           {worker.category} • Base ₹{worker.base_daily_wage}
                           {worker.travel_allowance > 0 && ` + TA ₹${worker.travel_allowance}`}
                         </p>
                       </div>
-                      {dailyPay > 0 && (
-                        <div className="text-right">
-                          <div className="text-xs text-neutral-600 dark:text-dark-muted">Daily Pay</div>
-                          <div className="text-lg font-bold text-green-600 dark:text-green-400">
-                            ₹{dailyPay.toFixed(0)}
+                      <div className="flex items-center gap-3">
+                        {dailyPay > 0 && (
+                          <div className="text-right">
+                            <div className="text-xs text-neutral-600 dark:text-dark-muted">Daily Pay</div>
+                            <div className="text-lg font-bold text-green-600 dark:text-green-400">
+                              ₹{dailyPay.toFixed(0)}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
+                        <button
+                          onClick={() => setSelectedWorkerForReport(worker)}
+                          className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/40 transition-colors"
+                          title="View Monthly Report"
+                        >
+                          <BarChart3 size={20} />
+                        </button>
+                      </div>
                     </div>
                     {!canMark.allowed && (
                       <div className="mt-2 text-xs text-red-600 dark:text-red-400 font-medium">
@@ -509,7 +523,7 @@ export default function DailyAttendance() {
                           <button
                             key={type.value}
                             onClick={() => handleAttendanceChange(worker.id, 'attendance_type', type.value)}
-                            className={`py-3 px-1 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
+                            className={`py-2 px-1 rounded-lg font-bold text-xs transition-all whitespace-nowrap ${
                               selectedType === type.value
                                 ? `bg-${type.color}-600 text-white shadow-lg scale-105`
                                 : `bg-${type.color}-50 dark:bg-${type.color}-900/20 text-${type.color}-700 dark:text-${type.color}-400 hover:bg-${type.color}-100 dark:hover:bg-${type.color}-900/20`
@@ -531,7 +545,7 @@ export default function DailyAttendance() {
                       </div>
 
                       {/* Kharci Input */}
-                      {selectedType && selectedType !== 'A' && (
+                      {selectedType && (
                         <div>
                           <label className="block text-xs font-medium text-neutral-700 dark:text-dark-text mb-1">
                             Kharci (Optional)
@@ -594,7 +608,57 @@ export default function DailyAttendance() {
             )}
           </button>
         )}
+
+        {/* Floating Save Button - Shows when changes detected */}
+        {hasChanges && workers.length > 0 && (
+          <button
+            onClick={handleSaveAttendance}
+            disabled={saving}
+            className="fixed bottom-20 right-6 bg-green-600 hover:bg-green-700 text-white px-6 py-4 rounded-full shadow-2xl flex items-center gap-3 font-bold text-base transition-all disabled:opacity-50 z-50 animate-bounce"
+          >
+            {saving ? (
+              <>
+                <div className="w-5 h-5 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save size={20} />
+                Save
+              </>
+            )}
+          </button>
+        )}
+
+        {/* Floating Save Button - Shows when changes detected */}
+        {hasChanges && workers.length > 0 && (
+          <button
+            onClick={handleSaveAttendance}
+            disabled={saving}
+            className="fixed bottom-20 right-6 bg-green-600 hover:bg-green-700 text-white px-6 py-4 rounded-full shadow-2xl flex items-center gap-3 font-bold text-base transition-all disabled:opacity-50 z-50 animate-bounce"
+          >
+            {saving ? (
+              <>
+                <div className="w-5 h-5 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save size={20} />
+                Save
+              </>
+            )}
+          </button>
+        )}
       </div>
+
+      {/* Worker Monthly Report Modal */}
+      {selectedWorkerForReport && (
+        <WorkerMonthlyModal
+          worker={selectedWorkerForReport}
+          onClose={() => setSelectedWorkerForReport(null)}
+        />
+      )}
     </div>
   )
 }
