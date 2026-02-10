@@ -101,7 +101,7 @@ export default function ReleaseWorkerModal({ worker, onClose, onSuccess }) {
       const balanceRemaining = settlement.netPayable - amountPaid
 
       // Create final settlement record
-      const { data: settlementRecord, error: setError } = await supabase
+      const { data: settlementRecord, error: settlementError } = await supabase
         .from('worker_settlements')
         .insert({
           worker_id: worker.id,
@@ -127,7 +127,7 @@ export default function ReleaseWorkerModal({ worker, onClose, onSuccess }) {
         .select()
         .single()
 
-      if (setError) throw setError
+      if (settlementError) throw settlementError
 
       // Update worker status
       const { error: workerError } = await supabase
