@@ -21,6 +21,10 @@ export default function ReleaseWorkerModal({ worker, onClose, onSuccess }) {
 
   const calculateFinalSettlement = async () => {
     try {
+      console.log('🔍 Starting calculateFinalSettlement...')
+      console.log('Worker:', worker)
+      console.log('FormData:', formData)
+      
       setCalculating(true)
       setError('')
 
@@ -29,7 +33,10 @@ export default function ReleaseWorkerModal({ worker, onClose, onSuccess }) {
         throw new Error('Last working date cannot be before joining date')
       }
 
+      console.log('✅ Date validation passed')
+
       // Get all attendance up to last working date
+      console.log('📊 Fetching attendance data...')
       const { data: attendanceData, error: attError } = await supabase
         .from('worker_attendance')
         .select('*')
@@ -37,21 +44,33 @@ export default function ReleaseWorkerModal({ worker, onClose, onSuccess }) {
         .lte('attendance_date', formData.last_working_date)
         .gte('attendance_date', worker.joining_date)
 
-      if (attError) throw attError
+      console.log('Attendance data fetched:', attendanceData?.length, 'records')
+      if (attError) {
+        console.error('❌ Attendance fetch error:', attError)
+        throw attError
+      }
 
       // Get all previous settlements
-      const { data: settlementsData, error: setError } = await supabase
+      console.log('💰 Fetching previous settlements...')
+      const { data: settlementsData, error: settlementsError } = await supabase
         .from('worker_settlements')
         .select('amount_paid')
         .eq('worker_id', worker.id)
 
-      if (setError) throw setError
+      console.log('Settlements data fetched:', settlementsData?.length, 'records')
+      if (settlementsError) {
+        console.error('❌ Settlements fetch error:', settlementsError)
+        throw settlementsError
+      }
 
       // Calculate totals
+      console.log('🧮 Calculating totals...')
       const totalEarned = attendanceData?.reduce((sum, r) => sum + (parseFloat(r.daily_pay) || 0), 0) || 0
       const totalKharci = attendanceData?.reduce((sum, r) => sum + (parseFloat(r.kharci_amount) || 0), 0) || 0
       const totalPaid = settlementsData?.reduce((sum, r) => sum + (parseFloat(r.amount_paid) || 0), 0) || 0
       const netPayable = totalEarned - totalKharci - totalPaid
+
+      console.log('Totals:', { totalEarned, totalKharci, totalPaid, netPayable })
 
       // Calculate attendance breakdown
       const breakdown = {}
@@ -65,6 +84,9 @@ export default function ReleaseWorkerModal({ worker, onClose, onSuccess }) {
         return sum + (parseFloat(r.attendance_multiplier) || 0)
       }, 0) || 0
 
+      console.log('Total days worked:', totalDaysWorked)
+      console.log('Attendance breakdown:', breakdown)
+
       setSettlement({
         totalEarned,
         totalKharci,
@@ -75,9 +97,13 @@ export default function ReleaseWorkerModal({ worker, onClose, onSuccess }) {
         attendanceRecords: attendanceData?.length || 0
       })
 
+      console.log('✅ Settlement calculated successfully')
+
       // Pre-fill amount paid with net payable
       setFormData(prev => ({ ...prev, amount_paid: netPayable.toFixed(2) }))
     } catch (err) {
+      console.error('❌ calculateFinalSettlement error:', err)
+      console.error('Error stack:', err.stack)
       setError(err.message)
     } finally {
       setCalculating(false)
@@ -86,6 +112,11 @@ export default function ReleaseWorkerModal({ worker, onClose, onSuccess }) {
 
   const handleRelease = async () => {
     try {
+      console.log('🚀 Starting handleRelease...')
+      console.log('Worker:', worker)
+      console.log('Settlement:', settlement)
+      console.log('FormData:', formData)
+      
       setLoading(true)
       setError('')
 
@@ -100,7 +131,10 @@ export default function ReleaseWorkerModal({ worker, onClose, onSuccess }) {
       const amountPaid = parseFloat(formData.amount_paid) || 0
       const balanceRemaining = settlement.netPayable - amountPaid
 
+      console.log('💵 Amount paid:', amountPaid, 'Balance:', balanceRemaining)
+
       // Create final settlement record
+      console.log('📝 Creating settlement record...')
       const { data: settlementRecord, error: settlementError } = await supabase
         .from('worker_settlements')
         .insert({
@@ -127,9 +161,15 @@ export default function ReleaseWorkerModal({ worker, onClose, onSuccess }) {
         .select()
         .single()
 
-      if (settlementError) throw settlementError
+      if (settlementError) {
+        console.error('❌ Settlement record error:', settlementError)
+        throw settlementError
+      }
+
+      console.log('✅ Settlement record created:', settlementRecord)
 
       // Update worker status
+      console.log('👤 Updating worker status...')
       const { error: workerError } = await supabase
         .from('workers')
         .update({
@@ -140,10 +180,18 @@ export default function ReleaseWorkerModal({ worker, onClose, onSuccess }) {
         })
         .eq('id', worker.id)
 
-      if (workerError) throw workerError
+      if (workerError) {
+        console.error('❌ Worker update error:', workerError)
+        throw workerError
+      }
+
+      console.log('✅ Worker status updated successfully')
+      console.log('🎉 Release process completed!')
 
       onSuccess()
     } catch (err) {
+      console.error('❌ handleRelease error:', err)
+      console.error('Error stack:', err.stack)
       setError(err.message)
     } finally {
       setLoading(false)
