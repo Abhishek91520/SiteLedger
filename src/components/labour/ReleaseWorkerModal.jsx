@@ -199,10 +199,10 @@ export default function ReleaseWorkerModal({ worker, onClose, onSuccess }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white dark:bg-dark-card rounded-2xl shadow-2xl max-w-2xl w-full my-8">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-dark-card rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-red-500 to-red-600 text-white p-6 flex items-center justify-between rounded-t-2xl">
+        <div className="bg-gradient-to-r from-red-500 to-red-600 text-white p-6 flex items-center justify-between rounded-t-2xl flex-shrink-0">
           <div className="flex items-center gap-3">
             <UserX size={28} />
             <div>
@@ -216,7 +216,7 @@ export default function ReleaseWorkerModal({ worker, onClose, onSuccess }) {
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-xl flex items-center gap-2">
               <AlertCircle size={20} />
@@ -413,7 +413,7 @@ export default function ReleaseWorkerModal({ worker, onClose, onSuccess }) {
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-neutral-200 dark:border-dark-border flex gap-3">
+        <div className="p-6 border-t border-neutral-200 dark:border-dark-border flex gap-3 flex-shrink-0">
           <button
             onClick={onClose}
             className="flex-1 px-6 py-3 border border-neutral-300 dark:border-dark-border rounded-xl font-semibold text-neutral-700 dark:text-dark-text hover:bg-neutral-50 dark:hover:bg-dark-hover transition-colors"
