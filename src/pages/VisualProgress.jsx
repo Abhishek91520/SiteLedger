@@ -724,8 +724,22 @@ export default function VisualProgress() {
       const notes = notesResult.data || []
       const images = imagesResult.data || []
 
+      // Calculate true overall completion percentage across all applicable work items
+      const applicableWorkItems = workItemsProgress.filter(wi => {
+        if (flat.is_refuge === true && ['C', 'E'].includes(wi.work_item_code)) {
+          return false
+        }
+        return true
+      })
+      
+      const totalPercentage = applicableWorkItems.reduce((sum, wi) => sum + wi.completion_percentage, 0)
+      const trueOverallPercentage = applicableWorkItems.length > 0 
+        ? Math.round(totalPercentage / applicableWorkItems.length) 
+        : 0
+
       setSelectedFlat({
         ...flat,
+        completion_percentage: trueOverallPercentage,
         work_items_progress: workItemsProgress,
         notes: notes || [],
         images: images || []

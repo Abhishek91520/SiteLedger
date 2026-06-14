@@ -398,107 +398,98 @@ export default function BulkUpdate() {
         return
       }
 
-      // Check for existing entries and handle them
+      // 1. Fetch ALL existing progress entries for selected flats and work item
+      const { data: existingEntries, error: err1 } = await supabase
+        .from('progress_entries')
+        .select('id, flat_id')
+        .eq('work_item_id', selectedWorkItem)
+        .in('flat_id', selectedFlats)
+      
+      if (err1) throw err1
+
+      const existingEntriesMap = {}
+      existingEntries?.forEach(e => existingEntriesMap[e.flat_id] = e.id)
+
+      // 2. Fetch ALL existing detailed progress for selected flats and work item
+      const { data: existingDetails, error: err2 } = await supabase
+        .from('work_item_details_progress')
+        .select('id, flat_id, detail_config_id')
+        .eq('work_item_id', selectedWorkItem)
+        .in('flat_id', selectedFlats)
+
+      if (err2) throw err2
+
+      const existingDetailsMap = {}
+      existingDetails?.forEach(d => {
+        const key = `${d.flat_id}-${d.detail_config_id}`
+        existingDetailsMap[key] = d.id
+      })
+
+      // 3. Prepare bulk arrays
+      const entriesToUpsert = []
+      const detailsToUpsert = []
+
       for (const flatId of selectedFlats) {
         const flat = flats.find(f => f.id === flatId)
-        
-        // For joint refuge flats with bathroom work (D), quantity = 0.5 (2 flats share 1 bathroom)
         const isJointRefugeBathroom = flat?.is_joint_refuge && workItem?.code === 'D'
         const quantity = isJointRefugeBathroom ? 0.5 : 1
-        
-        // Check if entry already exists
-        const { data: existing, error: checkError } = await supabase
-          .from('progress_entries')
-          .select('id, quantity_completed')
-          .eq('flat_id', flatId)
-          .eq('work_item_id', selectedWorkItem)
-          .maybeSingle()
 
-        if (checkError) throw checkError
+        const entryId = existingEntriesMap[flatId]
+        entriesToUpsert.push({
+          ...(entryId ? { id: entryId } : {}),
+          flat_id: flatId,
+          work_item_id: selectedWorkItem,
+          quantity_completed: quantity,
+          entry_date: completionDate,
+          remarks: isJointRefugeBathroom 
+            ? 'Bulk update - joint refuge (0.5 bathroom shared)' 
+            : 'Bulk update - marked as completed',
+          created_by: user.id,
+          updated_at: new Date().toISOString()
+        })
 
-        if (existing) {
-          // Update existing entry
-          const { error: updateError } = await supabase
-            .from('progress_entries')
-            .update({
-              quantity_completed: quantity,
-              entry_date: completionDate,
-              remarks: isJointRefugeBathroom 
-                ? 'Bulk update - joint refuge (0.5 bathroom shared)' 
-                : 'Bulk update - marked as completed',
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', existing.id)
-
-          if (updateError) throw updateError
-        } else {
-          // Insert new entry
-          const { error: insertError } = await supabase
-            .from('progress_entries')
-            .insert({
-              flat_id: flatId,
-              work_item_id: selectedWorkItem,
-              quantity_completed: quantity,
-              entry_date: completionDate,
-              remarks: isJointRefugeBathroom 
-                ? 'Bulk update - joint refuge (0.5 bathroom shared)' 
-                : 'Bulk update - marked as completed',
-              created_by: user.id
-            })
-
-          if (insertError) throw insertError
-        }
-
-        // Also update sub-items (work_item_details_progress) for this flat if any
         if (availableDetailConfigs.length > 0) {
           let applicableConfigs = availableDetailConfigs.filter(config => {
             if (!config.requires_bhk_type) return true;
             return config.requires_bhk_type === flat.bhk_type;
           });
 
-          // Special handling for Work Item D (Bathrooms) and refugee flats
-          if (workItem.code === 'D') {
-            if (flat.is_refuge === true && flat.is_joint_refuge !== true) {
-              applicableConfigs = applicableConfigs.filter(c => c.detail_name === 'Common Bathroom');
-            }
+          if (workItem.code === 'D' && flat.is_refuge === true && flat.is_joint_refuge !== true) {
+            applicableConfigs = applicableConfigs.filter(c => c.detail_name === 'Common Bathroom');
           }
 
-          // Insert or update each sub-item as completed
           for (const config of applicableConfigs) {
-            const { data: existingProgress, error: fetchErr } = await supabase
-              .from('work_item_details_progress')
-              .select('id')
-              .eq('flat_id', flatId)
-              .eq('work_item_id', selectedWorkItem)
-              .eq('detail_config_id', config.id)
-              .maybeSingle();
-
-            if (fetchErr) throw fetchErr;
-
-            if (existingProgress) {
-              await supabase
-                .from('work_item_details_progress')
-                .update({
-                  is_completed: true,
-                  completed_at: new Date().toISOString(),
-                  completed_by: user.id,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', existingProgress.id);
-            } else {
-              await supabase
-                .from('work_item_details_progress')
-                .insert({
-                  flat_id: flatId,
-                  work_item_id: selectedWorkItem,
-                  detail_config_id: config.id,
-                  is_completed: true,
-                  completed_at: new Date().toISOString(),
-                  completed_by: user.id
-                });
-            }
+            const detailId = existingDetailsMap[`${flatId}-${config.id}`]
+            detailsToUpsert.push({
+              ...(detailId ? { id: detailId } : {}),
+              flat_id: flatId,
+              work_item_id: selectedWorkItem,
+              detail_config_id: config.id,
+              is_completed: true,
+              completed_at: new Date().toISOString(),
+              completed_by: user.id,
+              updated_at: new Date().toISOString()
+            })
           }
         }
+      }
+
+      // 4. Perform the bulk upserts
+      if (entriesToUpsert.length > 0) {
+        const { error: entriesErr } = await supabase
+          .from('progress_entries')
+          .upsert(entriesToUpsert)
+        if (entriesErr) throw entriesErr
+      }
+
+      // Supabase limits bulk operations, so chunk detailsToUpsert into chunks of 1000
+      const chunkSize = 1000
+      for (let i = 0; i < detailsToUpsert.length; i += chunkSize) {
+        const chunk = detailsToUpsert.slice(i, i + chunkSize)
+        const { error: detailsErr } = await supabase
+          .from('work_item_details_progress')
+          .upsert(chunk)
+        if (detailsErr) throw detailsErr
       }
 
       setMessage({ 
