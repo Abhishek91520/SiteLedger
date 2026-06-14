@@ -367,12 +367,39 @@ export default function VisualProgress() {
         .select('id, work_item_code, requires_bhk_type, detail_name, is_active')
         .eq('is_active', true)
 
-      // Batch load ALL detail checks (1 query instead of 2000+)
-      const { data: allDetailChecks } = await supabase
-        .from('work_item_details_progress')
-        .select('flat_id, work_item_id, detail_config_id, is_completed')
-        .in('flat_id', flatIds)
-        .limit(10000)
+      // Batch load ALL detail checks (Only if a specific work item is selected)
+      let allDetailChecks = []
+      if (selectedWorkItem !== 'ALL') {
+        const selectedItem = items.find(item => item.code === selectedWorkItem)
+        if (selectedItem) {
+          // Supabase has a default max_rows limit (usually 1000). We must paginate to get all records.
+          let hasMore = true
+          let from = 0
+          const pageSize = 1000
+          
+          while (hasMore) {
+            const { data, error } = await supabase
+              .from('work_item_details_progress')
+              .select('flat_id, work_item_id, detail_config_id, is_completed')
+              .eq('work_item_id', selectedItem.id)
+              .in('flat_id', flatIds)
+              .range(from, from + pageSize - 1)
+              
+            if (error) {
+              console.error('Error fetching detail checks:', error)
+              break
+            }
+            
+            if (data && data.length > 0) {
+              allDetailChecks = [...allDetailChecks, ...data]
+              from += pageSize
+              hasMore = data.length === pageSize
+            } else {
+              hasMore = false
+            }
+          }
+        }
+      }
 
       // Build lookup maps for O(1) access
       const progressByFlat = {}

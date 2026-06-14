@@ -88,9 +88,30 @@ export default function Dashboard() {
         .from('flats')
         .select('*', { count: 'exact', head: true })
 
-      const { data: flatsWithEntries } = await supabase
-        .from('progress_entries')
-        .select('flat_id')
+      let flatsWithEntries = []
+      let hasMoreFlats = true
+      let fromFlats = 0
+      const sizeFlats = 1000
+
+      while (hasMoreFlats) {
+        const { data, error } = await supabase
+          .from('progress_entries')
+          .select('flat_id')
+          .range(fromFlats, fromFlats + sizeFlats - 1)
+
+        if (error) {
+          console.error('Error fetching flats with entries:', error)
+          break
+        }
+
+        if (data && data.length > 0) {
+          flatsWithEntries = [...flatsWithEntries, ...data]
+          fromFlats += sizeFlats
+          hasMoreFlats = data.length === sizeFlats
+        } else {
+          hasMoreFlats = false
+        }
+      }
 
       const uniqueFlatsWithProgress = new Set((flatsWithEntries || []).map(e => e.flat_id))
       const flatsWithSomeProgress = uniqueFlatsWithProgress.size
@@ -138,10 +159,31 @@ export default function Dashboard() {
         .eq('is_active', true)
         .order('code')
 
-      // Get all progress entries
-      const { data: allProgressEntries } = await supabase
-        .from('progress_entries')
-        .select('work_item_id, quantity_completed')
+      // Get all progress entries with pagination to bypass 1000 row limit
+      let allProgressEntries = []
+      let hasMore = true
+      let from = 0
+      const pageSize = 1000
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('progress_entries')
+          .select('work_item_id, quantity_completed')
+          .range(from, from + pageSize - 1)
+
+        if (error) {
+          console.error('Error fetching progress entries:', error)
+          break
+        }
+
+        if (data && data.length > 0) {
+          allProgressEntries = [...allProgressEntries, ...data]
+          from += pageSize
+          hasMore = data.length === pageSize
+        } else {
+          hasMore = false
+        }
+      }
 
       const workItemsWithProgress = (workItems || []).map(item => {
         const itemEntries = (allProgressEntries || []).filter(entry => entry.work_item_id === item.id)
@@ -187,10 +229,31 @@ export default function Dashboard() {
           floors!inner(wing_id)
         `)
 
-      // Get progress entries per flat
-      const { data: flatProgressCounts } = await supabase
-        .from('progress_entries')
-        .select('flat_id')
+      // Get progress entries per flat with pagination
+      let flatProgressCounts = []
+      let hasMoreEntries = true
+      let fromEntries = 0
+      const sizeEntries = 1000
+
+      while (hasMoreEntries) {
+        const { data, error } = await supabase
+          .from('progress_entries')
+          .select('flat_id')
+          .range(fromEntries, fromEntries + sizeEntries - 1)
+
+        if (error) {
+          console.error('Error fetching flat progress entries:', error)
+          break
+        }
+
+        if (data && data.length > 0) {
+          flatProgressCounts = [...flatProgressCounts, ...data]
+          fromEntries += sizeEntries
+          hasMoreEntries = data.length === sizeEntries
+        } else {
+          hasMoreEntries = false
+        }
+      }
 
       const wingData = (wings || []).map(wing => {
         const wingFlats = (allFlatsWithProgress || []).filter(flat => flat.floors.wing_id === wing.id)

@@ -426,8 +426,10 @@ export default function BulkUpdate() {
       })
 
       // 3. Prepare bulk arrays
-      const entriesToUpsert = []
-      const detailsToUpsert = []
+      const entriesToInsert = []
+      const entriesToUpdate = []
+      const detailsToInsert = []
+      const detailsToUpdate = []
 
       for (const flatId of selectedFlats) {
         const flat = flats.find(f => f.id === flatId)
@@ -435,8 +437,7 @@ export default function BulkUpdate() {
         const quantity = isJointRefugeBathroom ? 0.5 : 1
 
         const entryId = existingEntriesMap[flatId]
-        entriesToUpsert.push({
-          ...(entryId ? { id: entryId } : {}),
+        const entryObj = {
           flat_id: flatId,
           work_item_id: selectedWorkItem,
           quantity_completed: quantity,
@@ -446,7 +447,13 @@ export default function BulkUpdate() {
             : 'Bulk update - marked as completed',
           created_by: user.id,
           updated_at: new Date().toISOString()
-        })
+        }
+
+        if (entryId) {
+          entriesToUpdate.push({ id: entryId, ...entryObj })
+        } else {
+          entriesToInsert.push(entryObj)
+        }
 
         if (availableDetailConfigs.length > 0) {
           let applicableConfigs = availableDetailConfigs.filter(config => {
@@ -460,8 +467,7 @@ export default function BulkUpdate() {
 
           for (const config of applicableConfigs) {
             const detailId = existingDetailsMap[`${flatId}-${config.id}`]
-            detailsToUpsert.push({
-              ...(detailId ? { id: detailId } : {}),
+            const detailObj = {
               flat_id: flatId,
               work_item_id: selectedWorkItem,
               detail_config_id: config.id,
@@ -469,26 +475,39 @@ export default function BulkUpdate() {
               completed_at: new Date().toISOString(),
               completed_by: user.id,
               updated_at: new Date().toISOString()
-            })
+            }
+
+            if (detailId) {
+              detailsToUpdate.push({ id: detailId, ...detailObj })
+            } else {
+              detailsToInsert.push(detailObj)
+            }
           }
         }
       }
 
-      // 4. Perform the bulk upserts
-      if (entriesToUpsert.length > 0) {
-        const { error: entriesErr } = await supabase
-          .from('progress_entries')
-          .upsert(entriesToUpsert)
+      // 4. Perform the bulk operations
+      if (entriesToInsert.length > 0) {
+        const { error: entriesErr } = await supabase.from('progress_entries').insert(entriesToInsert)
+        if (entriesErr) throw entriesErr
+      }
+      if (entriesToUpdate.length > 0) {
+        const { error: entriesErr } = await supabase.from('progress_entries').upsert(entriesToUpdate)
         if (entriesErr) throw entriesErr
       }
 
-      // Supabase limits bulk operations, so chunk detailsToUpsert into chunks of 1000
+      // Supabase limits bulk operations, so chunk details into chunks of 1000
       const chunkSize = 1000
-      for (let i = 0; i < detailsToUpsert.length; i += chunkSize) {
-        const chunk = detailsToUpsert.slice(i, i + chunkSize)
-        const { error: detailsErr } = await supabase
-          .from('work_item_details_progress')
-          .upsert(chunk)
+      
+      for (let i = 0; i < detailsToInsert.length; i += chunkSize) {
+        const chunk = detailsToInsert.slice(i, i + chunkSize)
+        const { error: detailsErr } = await supabase.from('work_item_details_progress').insert(chunk)
+        if (detailsErr) throw detailsErr
+      }
+
+      for (let i = 0; i < detailsToUpdate.length; i += chunkSize) {
+        const chunk = detailsToUpdate.slice(i, i + chunkSize)
+        const { error: detailsErr } = await supabase.from('work_item_details_progress').upsert(chunk)
         if (detailsErr) throw detailsErr
       }
 
