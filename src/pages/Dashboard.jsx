@@ -145,15 +145,22 @@ export default function Dashboard() {
 
       const workItemsWithProgress = (workItems || []).map(item => {
         const itemEntries = (allProgressEntries || []).filter(entry => entry.work_item_id === item.id)
-        const completed = itemEntries.reduce((sum, entry) => sum + entry.quantity_completed, 0)
-        const percentage = item.total_quantity > 0 ? (completed / item.total_quantity) * 100 : 0
+        
+        // Ensure quantity_completed is treated as a number
+        const completedRaw = itemEntries.reduce((sum, entry) => sum + (Number(entry.quantity_completed) || 0), 0)
+        // round to 1 decimal places to avoid floating point errors
+        const completed = Math.round(completedRaw * 10) / 10
+        
+        let percentage = item.total_quantity > 0 ? (completed / item.total_quantity) * 100 : 0
+        if (percentage > 100) percentage = 100 // Cap at 100%
+        
         return {
           name: item.code,
           fullName: item.name,
           completed,
           total: item.total_quantity,
           percentage: Math.round(percentage),
-          remaining: item.total_quantity - completed,
+          remaining: Math.max(0, Math.round((item.total_quantity - completed) * 10) / 10),
         }
       })
       
@@ -359,7 +366,7 @@ export default function Dashboard() {
           grouped[date] = { date, count: 0, quantity: 0 }
         }
         grouped[date].count += 1
-        grouped[date].quantity += entry.quantity_completed
+        grouped[date].quantity += Number(entry.quantity_completed) || 0
       })
 
       const timeline = Object.values(grouped).map(item => ({
