@@ -387,7 +387,6 @@ export default function BulkUpdate() {
       // Check for existing entries and handle them
       for (const flatId of selectedFlats) {
         const flat = flats.find(f => f.id === flatId)
-        const workItem = workItems.find(w => w.id === selectedWorkItem)
         
         // For joint refuge flats with bathroom work (D), quantity = 0.5 (2 flats share 1 bathroom)
         const isJointRefugeBathroom = flat?.is_joint_refuge && workItem?.code === 'D'
@@ -434,6 +433,57 @@ export default function BulkUpdate() {
             })
 
           if (insertError) throw insertError
+        }
+
+        // Also update sub-items (work_item_details_progress) for this flat if any
+        if (availableDetailConfigs.length > 0) {
+          let applicableConfigs = availableDetailConfigs.filter(config => {
+            if (!config.requires_bhk_type) return true;
+            return config.requires_bhk_type === flat.bhk_type;
+          });
+
+          // Special handling for Work Item D (Bathrooms) and refugee flats
+          if (workItem.code === 'D') {
+            if (flat.is_refuge === true && flat.is_joint_refuge !== true) {
+              applicableConfigs = applicableConfigs.filter(c => c.detail_name === 'Common Bathroom');
+            }
+          }
+
+          // Insert or update each sub-item as completed
+          for (const config of applicableConfigs) {
+            const { data: existingProgress, error: fetchErr } = await supabase
+              .from('work_item_details_progress')
+              .select('id')
+              .eq('flat_id', flatId)
+              .eq('work_item_id', selectedWorkItem)
+              .eq('detail_config_id', config.id)
+              .maybeSingle();
+
+            if (fetchErr) throw fetchErr;
+
+            if (existingProgress) {
+              await supabase
+                .from('work_item_details_progress')
+                .update({
+                  is_completed: true,
+                  completed_at: new Date().toISOString(),
+                  completed_by: user.id,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', existingProgress.id);
+            } else {
+              await supabase
+                .from('work_item_details_progress')
+                .insert({
+                  flat_id: flatId,
+                  work_item_id: selectedWorkItem,
+                  detail_config_id: config.id,
+                  is_completed: true,
+                  completed_at: new Date().toISOString(),
+                  completed_by: user.id
+                });
+            }
+          }
         }
       }
 
@@ -819,23 +869,12 @@ export default function BulkUpdate() {
                     const isPartiallyCompleted = hasDetailConfigs && flatDetail.percentage > 0 && flatDetail.percentage < 100
 
                     return (
-                      <button
+                      <div
                         key={flat.id}
-                        onClick={() => {
-                          if (isNotApplicable) return
-                          if (!hasDetailConfigs) {
-                            // For A, H, I - just toggle selection (old bulk update behavior)
-                            toggleSelection(flat.id, selectedWorkItem)
-                            return
-                          }
-                          setSelectedFlat(flat)
-                          setShowEnhancedModal(true)
-                        }}
-                        disabled={isNotApplicable}
                         className={`
                           relative p-4 rounded-xl border-2 transition-all
                           ${isNotApplicable
-                            ? 'border-neutral-200 dark:border-dark-border bg-neutral-100 dark:bg-neutral-800 opacity-50 cursor-not-allowed'
+                            ? 'border-neutral-200 dark:border-dark-border bg-neutral-100 dark:bg-neutral-800 opacity-50'
                             : isSelected 
                             ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 shadow-md' 
                             : isFullyCompleted
@@ -846,16 +885,32 @@ export default function BulkUpdate() {
                           }
                         `}
                       >
+                        <div 
+                          className="absolute inset-0 cursor-pointer"
+                          onClick={() => {
+                            if (isNotApplicable) return
+                            toggleSelection(flat.id, selectedWorkItem)
+                          }}
+                        />
+
                         {/* Completion Badge at Top Right */}
                         {!isNotApplicable && flatDetail.total > 0 && (
                           <div className="absolute -top-2 -right-2 z-10">
-                            <div className={`px-2 py-1 rounded-full text-xs font-bold shadow-md ${
+                            <div className={`px-2 py-1 rounded-full text-xs font-bold shadow-md cursor-pointer ${
                               flatDetail.percentage === 100
                                 ? 'bg-green-600 text-white'
                                 : flatDetail.percentage > 0
                                 ? 'bg-amber-500 text-white'
                                 : 'bg-red-500 text-white'
-                            }`}>
+                            }`}
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                if (!hasDetailConfigs) return
+                                setSelectedFlat(flat)
+                                setShowEnhancedModal(true)
+                            }}
+                            title="Click to view details"
+                            >
                               {flatDetail.percentage}%
                             </div>
                           </div>
@@ -863,7 +918,14 @@ export default function BulkUpdate() {
 
                         {/* Notes and Images Icons at Top Left */}
                         {(flatMetadata[flat.id]?.notesCount > 0 || flatMetadata[flat.id]?.imagesCount > 0) && (
-                          <div className="absolute -top-2 -left-2 z-10 flex gap-1">
+                          <div className="absolute -top-2 -left-2 z-10 flex gap-1 cursor-pointer"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                if (!hasDetailConfigs) return
+                                setSelectedFlat(flat)
+                                setShowEnhancedModal(true)
+                            }}
+                          >
                             {flatMetadata[flat.id]?.notesCount > 0 && (
                               <div className="bg-blue-600 text-white px-1.5 py-0.5 rounded-full flex items-center gap-0.5 text-xs font-semibold shadow-md">
                                 <FileText size={10} />
@@ -879,7 +941,7 @@ export default function BulkUpdate() {
                           </div>
                         )}
 
-                        <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-start justify-between mb-2 relative pointer-events-none">
                           <Home size={16} className={`${
                             isSelected ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-400 dark:text-neutral-600'
                           }`} />
@@ -894,7 +956,7 @@ export default function BulkUpdate() {
                           )}
                         </div>
                         
-                        <div className="text-left">
+                        <div className="text-left relative z-10 pointer-events-none">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <p className="font-bold text-neutral-800 dark:text-dark-text">
                               {flat.flat_number}
@@ -918,9 +980,16 @@ export default function BulkUpdate() {
                               N/A (No Kitchen)
                             </p>
                           ) : flatDetail.total > 0 ? (
-                            <div className="mt-2">
-                              <p className="text-xs text-neutral-600 dark:text-dark-muted mb-1">
-                                {flatDetail.completed}/{flatDetail.total} checks
+                            <div className="mt-2 pointer-events-auto cursor-pointer"
+                              title="Click to view details"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedFlat(flat);
+                                setShowEnhancedModal(true);
+                              }}>
+                              <p className="text-xs text-neutral-600 dark:text-dark-muted mb-1 flex items-center justify-between">
+                                <span>{flatDetail.completed}/{flatDetail.total} checks</span>
+                                <Info size={12} className="text-primary-500" />
                               </p>
                               <div className="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-1.5">
                                 <div
@@ -941,7 +1010,7 @@ export default function BulkUpdate() {
                             </p>
                           ) : null}
                         </div>
-                      </button>
+                      </div>
                     )
                   })}
                 </div>
