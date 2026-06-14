@@ -10,7 +10,8 @@ import { Building2, Filter, X, Info, Home, StickyNote, Camera, CheckCircle2, Cir
 function FlatTile({ flat, position, onFlatClick }) {
   const completionRate = flat.completion_percentage || 0
   let color = '#EF4444' // Red for 0%
-  if (completionRate === 100) color = '#10B981' // Green for 100%
+  if (flat.is_not_applicable) color = '#6B7280' // Gray for N/A
+  else if (completionRate === 100) color = '#10B981' // Green for 100%
   else if (completionRate > 0) color = '#F59E0B' // Amber for partial
   
   const handleClick = (e) => {
@@ -329,7 +330,9 @@ export default function VisualProgress() {
           id, flat_number, bhk_type, is_refuge, is_joint_refuge,
           floors!inner(id, floor_number, wing_id, wings!inner(id, code, name))
         `)
+        .eq('floors.wings.code', selectedWing)
         .order('flat_number')
+        .limit(2000)
 
       if (!flatsData || flatsData.length === 0) {
         setWings([])
@@ -343,17 +346,20 @@ export default function VisualProgress() {
         .from('progress_entries')
         .select('flat_id, work_item_id, quantity_completed')
         .in('flat_id', flatIds)
+        .limit(10000)
 
       // Batch load notes and images counts (2 queries instead of 600+)
       const { data: allNotes } = await supabase
         .from('flat_notes')
         .select('flat_id, work_item_id')
         .in('flat_id', flatIds)
+        .limit(10000)
 
       const { data: allImages } = await supabase
         .from('flat_images')
         .select('flat_id, work_item_id')
         .in('flat_id', flatIds)
+        .limit(10000)
 
       // Load ALL configs once and cache (1 query instead of 300+)
       const { data: allConfigs } = await supabase
@@ -366,6 +372,7 @@ export default function VisualProgress() {
         .from('work_item_details_progress')
         .select('flat_id, work_item_id, detail_config_id, is_completed')
         .in('flat_id', flatIds)
+        .limit(10000)
 
       // Build lookup maps for O(1) access
       const progressByFlat = {}
@@ -395,6 +402,10 @@ export default function VisualProgress() {
 
       // Helper function to get applicable configs (in-memory, no DB calls)
       const getApplicableConfigs = (workItemCode, bhkType, isRefuge, isJointRefuge) => {
+        if (isRefuge === true && ['C', 'E'].includes(workItemCode)) {
+          return []
+        }
+
         let filtered = allConfigs.filter(c => c.work_item_code === workItemCode)
 
         // Filter by BHK type if required
@@ -435,7 +446,11 @@ export default function VisualProgress() {
 
         if (selectedWorkItem === 'ALL') {
           // All work items - average completion across all work items
-          const workItemCompletions = items.map(item => {
+          const applicableItems = items.filter(item => {
+            return !(flat.is_refuge === true && ['C', 'E'].includes(item.code))
+          })
+
+          const workItemCompletions = applicableItems.map(item => {
             const applicableConfigIds = getApplicableConfigs(
               item.code, 
               flat.bhk_type, 
@@ -462,44 +477,50 @@ export default function VisualProgress() {
             return itemEntry && itemEntry.quantity_completed > 0 ? 100 : 0
           })
           
-          completion_percentage = workItemCompletions.reduce((a, b) => a + b, 0) / items.length
+          completion_percentage = applicableItems.length > 0 ? workItemCompletions.reduce((a, b) => a + b, 0) / applicableItems.length : 0
         } else {
           // Specific work item
           const selectedItem = items.find(item => item.code === selectedWorkItem)
           if (selectedItem) {
-            const applicableConfigIds = getApplicableConfigs(
-              selectedItem.code, 
-              flat.bhk_type, 
-              flat.is_refuge, 
-              flat.is_joint_refuge
-            )
-
-            if (applicableConfigIds.length === 0) {
-              const hasEntry = entries.some(e => 
-                e.work_item_id === selectedItem.id && e.quantity_completed > 0
-              )
-              completion_percentage = hasEntry ? 100 : 0
+            if (flat.is_refuge === true && ['C', 'E'].includes(selectedItem.code)) {
+              completion_percentage = 0
+              flat.is_not_applicable = true
             } else {
-              const detailChecks = detailChecksByFlat[`${flat.id}-${selectedItem.id}`] || []
-              
-              // If specific subtasks are selected, only consider those
-              let checksToConsider = applicableConfigIds
-              if (selectedSubtasks.length > 0) {
-                checksToConsider = applicableConfigIds.filter(id => selectedSubtasks.includes(id))
-              }
-              
-              if (checksToConsider.length === 0) {
-                completion_percentage = 0
-              } else {
-                const relevantChecks = detailChecks.filter(c => 
-                  checksToConsider.includes(c.detail_config_id)
+              const applicableConfigIds = getApplicableConfigs(
+                selectedItem.code, 
+                flat.bhk_type, 
+                flat.is_refuge, 
+                flat.is_joint_refuge
+              )
+
+              if (applicableConfigIds.length === 0) {
+                const hasEntry = entries.some(e => 
+                  e.work_item_id === selectedItem.id && e.quantity_completed > 0
                 )
+                completion_percentage = hasEntry ? 100 : 0
+              } else {
+                const detailChecks = detailChecksByFlat[`${flat.id}-${selectedItem.id}`] || []
                 
-                if (relevantChecks.length > 0) {
-                  const completed = relevantChecks.filter(c => c.is_completed).length
-                  completion_percentage = (completed / checksToConsider.length) * 100
-                } else {
+                // If specific subtasks are selected, only consider those
+                let checksToConsider = applicableConfigIds
+                if (selectedSubtasks.length > 0) {
+                  checksToConsider = applicableConfigIds.filter(id => selectedSubtasks.includes(id))
+                }
+                
+                if (checksToConsider.length === 0) {
                   completion_percentage = 0
+                  flat.is_not_applicable = true
+                } else {
+                  const relevantChecks = detailChecks.filter(c => 
+                    checksToConsider.includes(c.detail_config_id)
+                  )
+                  
+                  if (relevantChecks.length > 0) {
+                    const completed = relevantChecks.filter(c => c.is_completed).length
+                    completion_percentage = (completed / checksToConsider.length) * 100
+                  } else {
+                    completion_percentage = 0
+                  }
                 }
               }
             }
@@ -518,6 +539,13 @@ export default function VisualProgress() {
       // Group flats by wing and floor
       const wingsMap = {}
       flatsWithCompletion.forEach(flat => {
+        // Apply Quick Filters (Status Filter) to visually gray out non-matching flats
+        if (subtaskFilter === 'PENDING' && flat.completion_percentage === 100) {
+          flat.is_not_applicable = true
+        } else if (subtaskFilter === 'COMPLETED' && flat.completion_percentage !== 100) {
+          flat.is_not_applicable = true
+        }
+
         const wing = flat.floors.wings
         const floor = flat.floors
         
@@ -569,6 +597,10 @@ export default function VisualProgress() {
 
       // Helper function to get applicable configs (in-memory filtering)
       const getApplicableConfigsForFlat = (workItemCode) => {
+        if (flat.is_refuge === true && ['C', 'E'].includes(workItemCode)) {
+          return []
+        }
+
         let filtered = allConfigsForFlat.filter(c => c.work_item_code === workItemCode)
 
         // Filter by BHK type if required

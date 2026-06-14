@@ -290,10 +290,17 @@ export default function BulkUpdate() {
     if (!selectedWorkItem) return
 
     const filteredFlats = getFilteredFlats()
-    const allSelected = filteredFlats.every(flat => selections[flat.id]?.[selectedWorkItem])
+    
+    // Only check applicable flats for selection status
+    const applicableFlats = filteredFlats.filter(flat => {
+      const workItem = workItems.find(w => w.id === selectedWorkItem)
+      return !(flat.is_refuge && workItem && ['C', 'E'].includes(workItem.code))
+    })
+    
+    const allSelected = applicableFlats.every(flat => selections[flat.id]?.[selectedWorkItem])
 
     const newSelections = { ...selections }
-    filteredFlats.forEach(flat => {
+    applicableFlats.forEach(flat => {
       if (!newSelections[flat.id]) newSelections[flat.id] = {}
       newSelections[flat.id][selectedWorkItem] = !allSelected
     })
@@ -313,13 +320,20 @@ export default function BulkUpdate() {
     if (filterCompletionStatus !== 'ALL' && selectedWorkItem) {
       filtered = filtered.filter(flat => {
         const flatDetail = detailProgress[flat.id] || { percentage: 0 }
+        const workItem = workItems.find(w => w.id === selectedWorkItem)
+        const hasDetailConfigs = workItem && ['B', 'C', 'D', 'E', 'F', 'G'].includes(workItem.code)
+        
+        let percentage = flatDetail.percentage
+        if (!hasDetailConfigs) {
+          percentage = isAlreadyCompleted(flat.id) ? 100 : 0
+        }
         
         if (filterCompletionStatus === 'COMPLETED') {
-          return flatDetail.percentage === 100
+          return percentage === 100
         } else if (filterCompletionStatus === 'PARTIAL') {
-          return flatDetail.percentage > 0 && flatDetail.percentage < 100
+          return percentage > 0 && percentage < 100
         } else if (filterCompletionStatus === 'PENDING') {
-          return flatDetail.percentage === 0
+          return percentage === 0
         }
         return true
       })
