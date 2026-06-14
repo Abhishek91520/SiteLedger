@@ -120,9 +120,17 @@ export default function Dashboard() {
         .from('progress_entries')
         .select('*', { count: 'exact', head: true })
       
-      // Calculate overall completion based on work items
-      const overallCompletion = workItemsWithProgress.length > 0
-        ? workItemsWithProgress.reduce((sum, item) => sum + item.percentage, 0) / workItemsWithProgress.length
+      // Calculate overall completion based on weighted quantities
+      let totalCompletedQuantity = 0
+      let totalRequiredQuantity = 0
+      
+      workItemsWithProgress.forEach(wi => {
+        totalCompletedQuantity += Number(wi.completed) || 0
+        totalRequiredQuantity += Number(wi.total) || 0
+      })
+      
+      const overallCompletion = totalRequiredQuantity > 0 
+        ? (totalCompletedQuantity / totalRequiredQuantity) * 100 
         : 0
 
       setOverallStats({
